@@ -333,18 +333,20 @@ export async function runScheduledDigest(
   env: Bindings
 ): Promise<{ sent: boolean; reason: string; count?: number; telegramCount?: number }> {
   const settings = await getSettings(env.DB);
-  if (settings.digest_enabled !== 1) {
-    return { sent: false, reason: 'Digest disabled' };
-  }
-
   const apiKey = settings.resend_api_key || env.RESEND_API_KEY;
-  const canSendEmail = Boolean(settings.digest_email && apiKey);
+  const emailEnabled = settings.digest_enabled === 1;
+  const canSendEmail = Boolean(emailEnabled && settings.digest_email && apiKey);
   const telegramToken = settings.telegram_bot_token?.trim() || '';
   const telegramChatId = settings.telegram_allowed_chat_id?.trim() || '';
   const canSendTelegram = Boolean(telegramToken && telegramChatId);
 
   if (!canSendEmail && !canSendTelegram) {
-    return { sent: false, reason: 'No email or Telegram delivery channel configured' };
+    return {
+      sent: false,
+      reason: emailEnabled
+        ? 'No email or Telegram delivery channel configured'
+        : 'Digest disabled and Telegram not configured',
+    };
   }
 
   const now = new Date();
@@ -358,7 +360,10 @@ export async function runScheduledDigest(
     };
   }
 
-  if (settings.last_digest_sent_date === todayUtc) {
+  const needEmail = canSendEmail && settings.last_digest_sent_date !== todayUtc;
+  const needTelegram = canSendTelegram && settings.last_telegram_review_date !== todayUtc;
+
+  if (!needEmail && !needTelegram) {
     return { sent: false, reason: 'Already sent today' };
   }
 
@@ -370,7 +375,7 @@ export async function runScheduledDigest(
   let emailSent = false;
   let emailError: string | undefined;
 
-  if (canSendEmail && settings.digest_email && apiKey) {
+  if (needEmail && settings.digest_email && apiKey) {
     const rendered = buildDigestEmail(highlights);
     const from = settings.from_email || 'Mnema Digest <onboarding@resend.dev>';
 
@@ -404,18 +409,27 @@ export async function runScheduledDigest(
   }
 
   let telegramCount = 0;
-  if (canSendTelegram) {
+  if (needTelegram) {
     telegramCount = await sendTelegramReviewHighlights(telegramToken, telegramChatId, highlights);
   }
 
-  if (emailSent || telegramCount > 0) {
-    const sentAt = now.toISOString();
+  const sentAt = now.toISOString();
+  if (emailSent) {
     await env.DB.prepare(
       `UPDATE user_settings SET last_digest_sent_date = ?, last_digest_sent_at = ?, updated_at = ? WHERE id = 'default'`
     )
       .bind(todayUtc, sentAt, sentAt)
       .run();
+  }
+  if (telegramCount > 0) {
+    await env.DB.prepare(
+      `UPDATE user_settings SET last_telegram_review_date = ?, updated_at = ? WHERE id = 'default'`
+    )
+      .bind(todayUtc, sentAt)
+      .run();
+  }
 
+  if (emailSent || telegramCount > 0) {
     return {
       sent: true,
       reason: 'Sent successfully',

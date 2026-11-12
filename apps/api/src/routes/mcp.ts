@@ -4,12 +4,37 @@ import { parseArticleFromUrl } from '../services/readability';
 import { escapeHtml, sanitizeNewsletterHtml } from '../services/emailParser';
 import { extractYouTubeVideoId, fetchYouTubeTranscript } from '../services/youtube';
 import { verifyOAuthToken } from './oauth';
-import { semanticSearchHighlights } from '../services/semantic';
+import { extractApiKeyFromHeaders, verifyApiKey } from '../middleware/apiKeyAuth';
+import { indexHighlightVector, semanticSearchHighlights } from '../services/semantic';
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{
+  Bindings: Bindings;
+  Variables: { apiKeyScopes?: string };
+}>();
 
-// OAuth 2.1 Protection Middleware (mandatory by default; only bypassed when explicit local-dev flag is set)
+const MUTATING_MCP_TOOLS = new Set(['save_article', 'add_highlight']);
+
+// OAuth 2.1 + X-Api-Key Protection Middleware (mandatory by default; only bypassed when explicit local-dev flag is set)
 app.use('*', async (c, next) => {
+  const rawApiKey = extractApiKeyFromHeaders({
+    xApiKey: c.req.header('X-Api-Key'),
+    authorization: c.req.header('authorization'),
+  });
+  if (rawApiKey) {
+    let execCtx: { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+    try {
+      execCtx = c.executionCtx;
+    } catch {
+      execCtx = undefined;
+    }
+    const validKey = await verifyApiKey(c.env, rawApiKey, execCtx);
+    if (!validKey) {
+      return c.json({ error: 'invalid_token', message: 'Invalid or revoked API key' }, 401);
+    }
+    c.set('apiKeyScopes', validKey.scopes);
+    return next();
+  }
+
   const authHeader = c.req.header('authorization') || '';
   if (/^bearer\s+/i.test(authHeader)) {
     const token = authHeader.replace(/^bearer\s+/i, '').trim();
@@ -189,6 +214,24 @@ app.post('/', async (c) => {
   if (method === 'tools/call') {
     const { name, arguments: args } = params || {};
 
+    const apiKeyScopes = c.get('apiKeyScopes');
+    if (apiKeyScopes && typeof name === 'string' && MUTATING_MCP_TOOLS.has(name)) {
+      const scopes = apiKeyScopes
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      if (!scopes.includes('write') && !scopes.includes('*')) {
+        return c.json(
+          {
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32001, message: 'API key lacks write scope' },
+          },
+          403
+        );
+      }
+    }
+
     try {
       if (name === 'search_library') {
         const query = `%${args?.query || ''}%`;
@@ -232,6 +275,37 @@ app.post('/', async (c) => {
         }
 
         const status = args?.status === 'later' ? 'later' : 'inbox';
+        const existingSource = await c.env.DB.prepare(
+          `SELECT id, name, type, reading_status FROM sources WHERE url = ? AND deleted = 0 LIMIT 1`
+        )
+          .bind(url)
+          .first<{ id: string; name: string; type: string; reading_status: string }>();
+
+        if (existingSource) {
+          return c.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      id: existingSource.id,
+                      name: existingSource.name,
+                      type: existingSource.type,
+                      status: existingSource.reading_status,
+                      deduplicated: true,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            },
+          });
+        }
+
         const sourceId = crypto.randomUUID();
         const now = new Date().toISOString();
         const ytId = extractYouTubeVideoId(url);
@@ -316,6 +390,10 @@ app.post('/', async (c) => {
         await c.env.DB.prepare(
           `INSERT INTO highlights (id, source_id, content, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
         ).bind(hlId, args?.source_id, args?.content, args?.note || null, now, now).run();
+
+        try {
+          c.executionCtx.waitUntil(indexHighlightVector(c.env, hlId).catch(() => {}));
+        } catch {}
 
         return c.json({
           jsonrpc: '2.0',

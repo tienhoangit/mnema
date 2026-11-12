@@ -1,4 +1,5 @@
 // Kindle Notebook Sync Content Script (read.amazon.com/notebook)
+import { buildAuthHeaders, getConfig } from './storage';
 
 (function () {
   function injectSyncButton() {
@@ -116,34 +117,18 @@
     if (textSpan) textSpan.textContent = `Đang gửi ${highlights.length} trích dẫn...`;
 
     try {
-      const config = await new Promise<{ apiUrl: string; apiToken: string }>((resolve) => {
-        chrome.storage.local.get(['mnema_api_url', 'mnema_api_token'], (items: Record<string, any>) => {
-          const rawUrl = items && typeof items.mnema_api_url === 'string' ? items.mnema_api_url : 'http://127.0.0.1:8787';
-          const rawToken = items && typeof items.mnema_api_token === 'string' ? items.mnema_api_token : '';
-          resolve({
-            apiUrl: rawUrl.replace(/\/+$/, ''),
-            apiToken: rawToken,
-          });
-        });
-      });
+      const config = await getConfig();
 
       const payload = [
         {
           title: bookTitle,
           author: bookAuthor,
           type: 'book',
-          url: window.location.href,
           highlights,
         },
       ];
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (config.apiToken) {
-        headers['Authorization'] = `Bearer ${config.apiToken}`;
-        headers['X-Api-Key'] = config.apiToken;
-      }
+      const headers = buildAuthHeaders(config);
 
       const res = await fetch(`${config.apiUrl}/api/import/json`, {
         method: 'POST',

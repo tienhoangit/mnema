@@ -3,27 +3,12 @@ import { Bindings, HighlightWithSource, PublicShareRow, SourceRow, TagRow } from
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-async function ensureSharesTable(db: D1Database): Promise<void> {
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS public_shares (
-      id TEXT PRIMARY KEY,
-      slug TEXT NOT NULL UNIQUE,
-      target_type TEXT NOT NULL,
-      target_id TEXT NOT NULL,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      view_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-}
-
 function createSlug(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 }
 
 // GET /api/shares - List active shares (optionally filtered by target_type & target_id)
 app.get('/', async (c) => {
-  await ensureSharesTable(c.env.DB);
   const targetType = c.req.query('target_type');
   const targetId = c.req.query('target_id');
 
@@ -46,7 +31,6 @@ app.get('/', async (c) => {
 
 // POST /api/shares - Create or reuse public share link
 app.post('/', async (c) => {
-  await ensureSharesTable(c.env.DB);
   const body = (await c.req.json()) as {
     target_type?: 'highlight' | 'source';
     target_id?: string;
@@ -123,7 +107,6 @@ app.post('/', async (c) => {
 
 // DELETE /api/shares/:slug - Revoke share link
 app.delete('/:slug', async (c) => {
-  await ensureSharesTable(c.env.DB);
   const slug = c.req.param('slug');
   await c.env.DB.prepare(`UPDATE public_shares SET is_active = 0 WHERE slug = ?`)
     .bind(slug)
@@ -135,7 +118,6 @@ app.delete('/:slug', async (c) => {
 export const publicShareRouter = new Hono<{ Bindings: Bindings }>();
 
 publicShareRouter.get('/:slug', async (c) => {
-  await ensureSharesTable(c.env.DB);
   const slug = c.req.param('slug');
 
   const share = await c.env.DB.prepare(

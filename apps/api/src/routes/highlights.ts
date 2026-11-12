@@ -1,8 +1,6 @@
 import { Hono } from 'hono';
-
-type Bindings = {
-  DB: D1Database;
-};
+import { Bindings } from '../types';
+import { indexHighlightVector } from '../services/semantic';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -109,6 +107,24 @@ app.post('/', async (c) => {
   ).bind(source_id, highlightContent).first<any>();
 
   if (existingHl) {
+    const incomingNote = note?.trim();
+    if (incomingNote && existingHl.note !== incomingNote) {
+      const nextNote = existingHl.note
+        ? `${existingHl.note}\n\n${incomingNote}`
+        : incomingNote;
+      await c.env.DB.prepare(
+        'UPDATE highlights SET note = ?, updated_at = ? WHERE id = ?'
+      ).bind(nextNote, now, existingHl.id).run();
+      const updatedExisting = await c.env.DB.prepare('SELECT * FROM highlights WHERE id = ?')
+        .bind(existingHl.id)
+        .first();
+      try {
+        c.executionCtx.waitUntil(indexHighlightVector(c.env, existingHl.id).catch(() => {}));
+      } catch {
+        // ignore
+      }
+      return c.json({ data: updatedExisting, message: 'Highlight note updated' }, 200);
+    }
     return c.json({ data: existingHl, message: 'Highlight already exists' }, 200);
   }
 
@@ -160,6 +176,13 @@ app.post('/', async (c) => {
   } catch {}
 
   const created = await c.env.DB.prepare(`SELECT * FROM highlights WHERE id = ?`).bind(id).first();
+
+  try {
+    c.executionCtx.waitUntil(indexHighlightVector(c.env, id).catch(() => {}));
+  } catch {
+    // executionCtx may be unavailable in non-worker test environments
+  }
+
   return c.json({ data: created }, 201);
 });
 
@@ -205,6 +228,15 @@ app.patch('/:id', async (c) => {
   `).bind(...params).run();
 
   const updated = await c.env.DB.prepare(`SELECT * FROM highlights WHERE id = ?`).bind(id).first();
+
+  if (body.content !== undefined || body.note !== undefined) {
+    try {
+      c.executionCtx.waitUntil(indexHighlightVector(c.env, id).catch(() => {}));
+    } catch {
+      // ignore
+    }
+  }
+
   return c.json({ data: updated });
 });
 
@@ -214,6 +246,14 @@ app.delete('/:id', async (c) => {
   await c.env.DB.prepare(
     `UPDATE highlights SET deleted = 1, updated_at = ? WHERE id = ?`
   ).bind(new Date().toISOString(), id).run();
+
+  if (c.env.VECTORIZE) {
+    try {
+      c.executionCtx.waitUntil(c.env.VECTORIZE.deleteByIds([id]).catch(() => {}));
+    } catch {
+      // ignore
+    }
+  }
 
   return c.json({ success: true });
 });
@@ -228,6 +268,14 @@ app.post('/bulk-delete', async (c) => {
   await c.env.DB.prepare(
     `UPDATE highlights SET deleted = 1, updated_at = ? WHERE id IN (${placeholders})`
   ).bind(new Date().toISOString(), ...ids).run();
+
+  if (c.env.VECTORIZE) {
+    try {
+      c.executionCtx.waitUntil(c.env.VECTORIZE.deleteByIds(ids).catch(() => {}));
+    } catch {
+      // ignore
+    }
+  }
 
   return c.json({ success: true, count: ids.length });
 });
@@ -277,6 +325,18 @@ app.post('/merge', async (c) => {
   ).bind(new Date().toISOString(), ...others).run();
 
   const updated = await c.env.DB.prepare(`SELECT * FROM highlights WHERE id = ?`).bind(primary.id).first();
+
+  try {
+    c.executionCtx.waitUntil(
+      Promise.allSettled([
+        indexHighlightVector(c.env, primary.id),
+        c.env.VECTORIZE && others.length > 0 ? c.env.VECTORIZE.deleteByIds(others) : Promise.resolve(),
+      ])
+    );
+  } catch {
+    // ignore
+  }
+
   return c.json({ data: updated });
 });
 

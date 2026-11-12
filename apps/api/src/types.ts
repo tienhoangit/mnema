@@ -6,6 +6,7 @@ export interface Bindings {
   DB: D1Database;
   ASSETS?: Fetcher;
   AI?: WorkersAiBinding;
+  VECTORIZE?: Vectorize;
   GEMINI_API_KEY?: string;
   RESEND_API_KEY?: string;
   OAUTH_KV?: KVNamespace;
@@ -14,6 +15,7 @@ export interface Bindings {
   AUTH_PIN_HASH?: string;
   REQUIRE_MCP_AUTH?: string;
   ALLOW_UNAUTH_MCP?: string;
+  REQUIRE_API_KEY?: string;
   PUBLIC_ORIGIN?: string;
 }
 
@@ -79,6 +81,7 @@ export interface UserSettingsRow {
   from_email: string | null;
   last_digest_sent_date: string | null;
   last_digest_sent_at: string | null;
+  last_telegram_review_date?: string | null;
   newsletter_secret: string | null;
   telegram_bot_token: string | null;
   telegram_webhook_secret: string | null;
@@ -154,5 +157,16 @@ export interface AiMessageRow {
   thread_id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  created_at: string;
+}
+
+export interface ApiKeyRow {
+  id: string;
+  name: string;
+  key_prefix: string;
+  key_hash: string;
+  scopes: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
   created_at: string;
 }

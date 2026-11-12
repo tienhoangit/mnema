@@ -23,12 +23,16 @@ import {
   X,
   FileText,
   WifiOff,
+  Languages,
+  Loader2,
+  BookmarkPlus,
 } from 'lucide-react';
 import { AiCopilotModal } from './AiCopilotModal';
 import { TocPanel } from './TocPanel';
 import { Source, Highlight, HighlightColor, ReaderSettings, ReadingStatus, TranscriptSegment, ReaderPreset } from '../types';
 import { READER_PRESETS } from '../hooks/useReaderSettings';
-import { saveArticleOffline, getArticleOffline, savePendingHighlight, PendingHighlight } from '../services/offlineDb';
+import { saveArticleOffline, getArticleOffline, savePendingHighlight, getPendingHighlights, PendingHighlight } from '../services/offlineDb';
+import { api } from '../services/api';
 
 interface ReaderViewProps {
   source: Source;
@@ -52,6 +56,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   onUpdateSourceNotes,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
+  const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Offline caching & fallback state
   const [offlineFallbackHtml, setOfflineFallbackHtml] = useState<string | null>(null);
@@ -131,12 +136,39 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
   // Floating highlight popup state
   const [selectedText, setSelectedText] = useState('');
-  const [selectionRange, setSelectionRange] = useState<{ x: number; y: number } | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string | undefined>(undefined);
+  const [selectionRange, setSelectionRange] = useState<{ x: number; top: number; bottom: number } | null>(null);
   const [highlightColor, setHighlightColor] = useState<HighlightColor>('yellow');
   const [highlightNote, setHighlightNote] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [isSavingHighlight, setIsSavingHighlight] = useState(false);
   const [localPendingHighlights, setLocalPendingHighlights] = useState<PendingHighlight[]>([]);
+  const selectionPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Load any pending offline highlights for this source & remove those already synced to server
+  useEffect(() => {
+    let active = true;
+    getPendingHighlights().then((all) => {
+      if (!active) return;
+      const syncedContents = new Set((source.highlights || []).map((h) => h.content.trim()));
+      setLocalPendingHighlights(
+        all.filter((p) => p.source_id === source.id && !syncedContents.has(p.content.trim()))
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [source.id, source.highlights]);
+
+  // Inline Ghostreader ("Explain / Translate") state
+  const [ghostreader, setGhostreader] = useState<{
+    action: 'explain' | 'translate';
+    text: string;
+    result?: string;
+    error?: string;
+    loading: boolean;
+    saved?: boolean;
+  } | null>(null);
 
   // Text-To-Speech (Web Speech API)
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -157,10 +189,14 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
   // Listen to text selection
   useEffect(() => {
-    const handleSelection = () => {
+    const handleSelection = (e: MouseEvent) => {
+      if (selectionPopoverRef.current?.contains(e.target as Node)) {
+        return;
+      }
+
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) {
-        if (!showNoteInput) {
+        if (!showNoteInput && !ghostreader) {
           setSelectionRange(null);
           setSelectedText('');
         }
@@ -171,17 +207,95 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       if (text.length > 2) {
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
+        let computedLoc: string | undefined;
+        if (contentRef.current && contentRef.current.contains(range.startContainer)) {
+          try {
+            const preRange = document.createRange();
+            preRange.selectNodeContents(contentRef.current);
+            preRange.setEnd(range.startContainer, range.startOffset);
+            const startOffset = preRange.toString().length;
+            computedLoc = `offset:${startOffset}-${startOffset + text.length}`;
+          } catch {}
+        }
         setSelectedText(text);
+        setSelectedLocation(computedLoc);
+        setGhostreader(null);
         setSelectionRange({
-          x: rect.left + rect.width / 2,
-          y: rect.top - 10,
+          x: Math.min(window.innerWidth - 190, Math.max(190, rect.left + rect.width / 2)),
+          top: rect.top,
+          bottom: rect.bottom,
         });
       }
     };
 
     document.addEventListener('mouseup', handleSelection);
     return () => document.removeEventListener('mouseup', handleSelection);
-  }, [showNoteInput]);
+  }, [showNoteInput, ghostreader]);
+
+  const handleRunGhostreader = async (action: 'explain' | 'translate') => {
+    const text = selectedText.trim();
+    if (!text) return;
+    setGhostreader({ action, text, loading: true });
+
+    try {
+      const articleText = contentRef.current?.innerText || '';
+      const idx = articleText.indexOf(text.slice(0, 40));
+      const contextSnippet =
+        idx >= 0
+          ? articleText.slice(Math.max(0, idx - 300), Math.min(articleText.length, idx + text.length + 300))
+          : articleText.slice(0, 800);
+
+      const res = await api.inlineAiAction({
+        action,
+        text,
+        context: contextSnippet,
+      });
+      setGhostreader({ action, text, result: res.result, loading: false });
+    } catch (err) {
+      setGhostreader({
+        action,
+        text,
+        error: err instanceof Error ? err.message : 'Ghostreader request failed',
+        loading: false,
+      });
+    }
+  };
+
+  const handleSaveGhostreaderAsNote = async () => {
+    if (!ghostreader?.result || isSavingHighlight) return;
+    setIsSavingHighlight(true);
+    const prefix = ghostreader.action === 'translate' ? '[Translation]' : '[AI Explanation]';
+    const noteContent = `${prefix} ${ghostreader.result}`;
+    try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const item = await savePendingHighlight({
+          source_id: source.id,
+          content: ghostreader.text,
+          note: noteContent,
+          color: highlightColor,
+        });
+        setLocalPendingHighlights((prev) => [...prev, item]);
+      } else {
+        await onCreateHighlight({
+          content: ghostreader.text,
+          note: noteContent,
+          color: highlightColor,
+        });
+      }
+      setGhostreader((prev) => (prev ? { ...prev, saved: true } : null));
+    } catch {
+      const item = await savePendingHighlight({
+        source_id: source.id,
+        content: ghostreader.text,
+        note: noteContent,
+        color: highlightColor,
+      });
+      setLocalPendingHighlights((prev) => [...prev, item]);
+      setGhostreader((prev) => (prev ? { ...prev, saved: true } : null));
+    } finally {
+      setIsSavingHighlight(false);
+    }
+  };
 
   const handleSaveHighlight = async () => {
     if (!selectedText.trim() || isSavingHighlight) return;
@@ -194,6 +308,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
           content: selectedText.trim(),
           note: highlightNote.trim() || undefined,
           color: highlightColor,
+          location: selectedLocation,
         });
         setLocalPendingHighlights((prev) => [...prev, item]);
       } else {
@@ -201,6 +316,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
           content: selectedText.trim(),
           note: highlightNote.trim() || undefined,
           color: highlightColor,
+          location: selectedLocation,
         });
       }
 
@@ -208,6 +324,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       window.getSelection()?.removeAllRanges();
       setSelectionRange(null);
       setSelectedText('');
+      setSelectedLocation(undefined);
       setHighlightNote('');
       setShowNoteInput(false);
     } catch (err) {
@@ -217,17 +334,134 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         content: selectedText.trim(),
         note: highlightNote.trim() || undefined,
         color: highlightColor,
+        location: selectedLocation,
       });
       setLocalPendingHighlights((prev) => [...prev, item]);
       window.getSelection()?.removeAllRanges();
       setSelectionRange(null);
       setSelectedText('');
+      setSelectedLocation(undefined);
       setHighlightNote('');
       setShowNoteInput(false);
     } finally {
       setIsSavingHighlight(false);
     }
   };
+
+  // Keyboard-First Triage in ReaderView (e = Archive, l = Later, h = Highlight selection, Esc = Close/Back)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable ||
+          target.closest('[contenteditable="true"], [contenteditable=""]'))
+      ) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === 'escape' && isAiOpen) {
+        e.preventDefault();
+        setIsAiOpen(false);
+        return;
+      }
+
+      // Do not intercept if a modal or CommandPalette is open
+      if (document.querySelector('[role="dialog"], [aria-modal="true"], .fixed.inset-0.z-50')) {
+        return;
+      }
+
+      if (key === 'escape') {
+        e.preventDefault();
+        if (ghostreader || selectionRange) {
+          setGhostreader(null);
+          setSelectionRange(null);
+          setSelectedText('');
+          setShowNoteInput(false);
+          window.getSelection()?.removeAllRanges();
+        } else {
+          onBack();
+        }
+        return;
+      }
+
+      if (key === 'e') {
+        e.preventDefault();
+        void onUpdateStatus('archive').then(() => onBack());
+      } else if (key === 'l') {
+        e.preventDefault();
+        void onUpdateStatus('later').then(() => onBack());
+      } else if (key === 'h') {
+        if (selectedText.trim().length > 2) {
+          e.preventDefault();
+          void handleSaveHighlight();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isAiOpen, ghostreader, selectionRange, selectedText, onBack, onUpdateStatus]);
+
+  // Render inline <mark> highlights in the article DOM
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+
+    // Unwrap any previously injected highlight marks
+    container.querySelectorAll('mark[data-mnema-hl]').forEach((mark) => {
+      const parent = mark.parentNode;
+      if (!parent) return;
+      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+      parent.removeChild(mark);
+      parent.normalize();
+    });
+
+    const allToRender = [
+      ...(source.highlights || []).map((h) => ({ id: h.id, content: h.content, color: h.color })),
+      ...localPendingHighlights.map((h) => ({ id: h.id, content: h.content, color: h.color })),
+    ];
+
+    const colorClassMap: Record<string, string> = {
+      yellow: 'bg-yellow-200/70 dark:bg-yellow-500/30 text-inherit rounded px-0.5',
+      blue: 'bg-sky-200/70 dark:bg-sky-500/30 text-inherit rounded px-0.5',
+      green: 'bg-emerald-200/70 dark:bg-emerald-500/30 text-inherit rounded px-0.5',
+      pink: 'bg-pink-200/70 dark:bg-pink-500/30 text-inherit rounded px-0.5',
+    };
+
+    for (const hl of allToRender) {
+      const snippet = hl.content.trim();
+      if (snippet.length < 3) continue;
+      const needle = snippet.slice(0, 80);
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      let node: Text | null;
+      while ((node = walker.nextNode() as Text | null)) {
+        if (!node.nodeValue || node.parentElement?.closest('mark[data-mnema-hl]')) continue;
+        const idx = node.nodeValue.indexOf(needle);
+        if (idx >= 0) {
+          try {
+            const range = document.createRange();
+            const end = Math.min(node.nodeValue.length, idx + snippet.length);
+            range.setStart(node, idx);
+            range.setEnd(node, end);
+            const mark = document.createElement('mark');
+            mark.setAttribute('data-mnema-hl', hl.id);
+            mark.className = colorClassMap[hl.color] || colorClassMap.yellow;
+            range.surroundContents(mark);
+          } catch {
+            // Skip cross-element ranges safely
+          }
+          break;
+        }
+      }
+    }
+  }, [source.content_html, offlineFallbackHtml, source.highlights, localPendingHighlights]);
 
   // Text-to-speech handler
   const toggleSpeech = () => {
@@ -450,18 +684,21 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         </div>
       </header>
 
-      {/* Floating Selection Tooltip */}
-      {selectionRange && (
+      {/* Floating Selection Tooltip + Inline Ghostreader */}
+      {selectionRange && (() => {
+        const placeBelow = selectionRange.top < (ghostreader ? 320 : 120);
+        return (
         <div
+          ref={selectionPopoverRef}
           style={{
             position: 'fixed',
             left: `${selectionRange.x}px`,
-            top: `${selectionRange.y}px`,
-            transform: 'translate(-50%, -100%)',
+            top: `${placeBelow ? Math.min(window.innerHeight - 80, selectionRange.bottom + 10) : Math.max(80, selectionRange.top - 10)}px`,
+            transform: placeBelow ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
           }}
-          className="z-50 bg-neutral-900 text-white rounded-2xl shadow-xl p-2 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-100"
+          className="z-40 bg-neutral-900 text-white rounded-2xl shadow-xl p-2 flex flex-col gap-2 max-w-[92vw] animate-in fade-in zoom-in-95 duration-100"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {/* Color buttons */}
             <div className="flex items-center gap-1">
               {(['yellow', 'blue', 'green', 'pink'] as HighlightColor[]).map((c) => {
@@ -498,12 +735,43 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             </button>
 
             <button
-              onClick={handleSaveHighlight}
+              onClick={() => handleSaveHighlight()}
               disabled={isSavingHighlight}
               className="px-2.5 py-1 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold flex items-center gap-1"
+              title="Highlight (h)"
             >
               <Highlighter className="w-3.5 h-3.5" />
               <span>Highlight</span>
+            </button>
+
+            <div className="w-px h-4 bg-neutral-700" />
+
+            <button
+              onClick={() => handleRunGhostreader('explain')}
+              disabled={ghostreader?.loading}
+              className={`px-2 py-1 rounded-xl text-xs font-medium flex items-center gap-1 transition-colors ${
+                ghostreader?.action === 'explain'
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : 'text-neutral-200 hover:bg-neutral-800'
+              }`}
+              title="Ghostreader: Explain selection"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Explain</span>
+            </button>
+
+            <button
+              onClick={() => handleRunGhostreader('translate')}
+              disabled={ghostreader?.loading}
+              className={`px-2 py-1 rounded-xl text-xs font-medium flex items-center gap-1 transition-colors ${
+                ghostreader?.action === 'translate'
+                  ? 'bg-sky-500/20 text-sky-300'
+                  : 'text-neutral-200 hover:bg-neutral-800'
+              }`}
+              title="Ghostreader: Translate (VI/EN)"
+            >
+              <Languages className="w-3.5 h-3.5 text-sky-400" />
+              <span>Translate</span>
             </button>
           </div>
 
@@ -517,11 +785,72 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSaveHighlight();
               }}
-              className="w-48 px-2 py-1 text-xs bg-neutral-800 rounded-lg text-white border border-neutral-700 focus:outline-hidden"
+              className="w-full px-2.5 py-1 text-xs bg-neutral-800 rounded-lg text-white border border-neutral-700 focus:outline-hidden"
             />
           )}
+
+          {/* Ghostreader Inline Result Popover */}
+          {ghostreader && (
+            <div className="w-80 sm:w-96 max-w-full bg-neutral-800/95 border border-neutral-700 rounded-xl p-3 space-y-2 text-xs font-sans">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-neutral-200 flex items-center gap-1.5">
+                  {ghostreader.action === 'explain' ? (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Ghostreader • Explain</span>
+                    </>
+                  ) : (
+                    <>
+                      <Languages className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Ghostreader • Translate (VI/EN)</span>
+                    </>
+                  )}
+                </span>
+                <button
+                  onClick={() => setGhostreader(null)}
+                  className="p-0.5 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-700"
+                  title="Dismiss (Esc)"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {ghostreader.loading ? (
+                <div className="flex items-center gap-2 py-2 text-neutral-300">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" />
+                  <span>{ghostreader.action === 'explain' ? 'Explaining passage...' : 'Translating...'}</span>
+                </div>
+              ) : ghostreader.error ? (
+                <p className="text-red-400 leading-relaxed">{ghostreader.error}</p>
+              ) : (
+                <>
+                  <p className="text-neutral-100 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+                    {ghostreader.result}
+                  </p>
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-neutral-700/70">
+                    {ghostreader.saved ? (
+                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" />
+                        Saved as highlight note
+                      </span>
+                    ) : (
+                      <button
+                        onClick={handleSaveGhostreaderAsNote}
+                        disabled={isSavingHighlight}
+                        className="px-2.5 py-1 rounded-lg bg-teal-700 hover:bg-teal-600 text-white font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <BookmarkPlus className="w-3.5 h-3.5" />
+                        <span>Save as Highlight Note</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {/* 2. Reader Body with Collapsible Right-Side Notebook Panel */}
       <div className="flex-1 flex overflow-hidden">
@@ -531,6 +860,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             style={{
               maxWidth: `${settings.contentWidth}px`,
               fontSize: `${settings.fontSize}px`,
+              lineHeight: settings.lineHeight,
             }}
             className={`mx-auto px-6 py-10 ${settings.fontFamily === 'serif' ? 'font-serif' : 'font-sans'}`}
           >
@@ -559,6 +889,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               <div className="space-y-6 mb-8 font-sans">
                 <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-md">
                   <iframe
+                    ref={youtubeIframeRef}
                     src={`https://www.youtube.com/embed/${metadata.youtube_id}?enablejsapi=1`}
                     title={source.name}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -577,7 +908,16 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                       {transcript.map((seg, idx) => (
                         <div
                           key={idx}
-                          className="p-2 rounded-xl hover:bg-teal-50 dark:hover:bg-neutral-700/60 transition-colors cursor-pointer flex items-start gap-3"
+                          onClick={() => {
+                            setCurrentTimeSec(seg.startSec);
+                            youtubeIframeRef.current?.contentWindow?.postMessage(
+                              JSON.stringify({ event: 'command', func: 'seekTo', args: [seg.startSec, true] }),
+                              '*'
+                            );
+                          }}
+                          className={`p-2 rounded-xl hover:bg-teal-50 dark:hover:bg-neutral-700/60 transition-colors cursor-pointer flex items-start gap-3 ${
+                            Math.abs(currentTimeSec - seg.startSec) < 2 ? 'bg-teal-50/80 dark:bg-teal-950/30' : ''
+                          }`}
                         >
                           <span className="text-xs font-mono text-neutral-400 mt-0.5 shrink-0">
                             {Math.floor(seg.startSec / 60)}:
@@ -679,7 +1019,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                       : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
                   }`}
                 >
-                  Highlights ({source.highlights?.length || 0})
+                  Highlights ({(source.highlights?.length || 0) + localPendingHighlights.length})
                 </button>
                 <button
                   onClick={() => setNotebookTab('notes')}
@@ -706,14 +1046,15 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {notebookTab === 'highlights' ? (
                 <>
-                  {!source.highlights || source.highlights.length === 0 ? (
+                  {(!source.highlights || source.highlights.length === 0) && localPendingHighlights.length === 0 ? (
                     <div className="py-16 text-center text-xs text-neutral-400 space-y-1">
                       <Highlighter className="w-6 h-6 mx-auto text-neutral-300 dark:text-neutral-700" />
                       <p>No highlights in this article yet.</p>
                       <p className="text-[11px] text-neutral-400">Select any text in the article to create one.</p>
                     </div>
                   ) : (
-                    source.highlights.map((hl) => (
+                    <>
+                    {source.highlights?.map((hl) => (
                       <div
                         key={hl.id}
                         onClick={() => scrollToHighlight(hl.content)}
@@ -733,7 +1074,22 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                           Jump to position →
                         </span>
                       </div>
-                    ))
+                    ))}
+                    {localPendingHighlights.map((hl) => (
+                      <div
+                        key={hl.id}
+                        onClick={() => scrollToHighlight(hl.content)}
+                        className="p-3.5 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 cursor-pointer transition-all shadow-2xs space-y-2"
+                      >
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                          Offline (pending sync)
+                        </span>
+                        <blockquote className="font-serif italic text-xs text-neutral-800 dark:text-neutral-200 line-clamp-3">
+                          “{hl.content}”
+                        </blockquote>
+                      </div>
+                    ))}
+                    </>
                   )}
                 </>
               ) : (

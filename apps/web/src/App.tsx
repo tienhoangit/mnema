@@ -69,19 +69,22 @@ const MainApp: React.FC = () => {
     undoReviewAction,
   } = useLibraryData({ currentTab, searchQuery, selectedSourceId });
 
-  // Global Command+K shortcut
+  // Sync pending offline highlights on startup (critical for iOS Safari) & on network restore
   useEffect(() => {
-    // Sync pending offline highlights on startup (critical for iOS Safari) & on network restore
-    syncPendingHighlights().then(({ synced }) => {
-      if (synced > 0) invalidateAll();
-    });
-    const handleOnline = () => {
+    const runSync = () => {
       syncPendingHighlights().then(({ synced }) => {
         if (synced > 0) invalidateAll();
       });
     };
-    window.addEventListener('online', handleOnline);
+    runSync();
+    window.addEventListener('online', runSync);
+    return () => {
+      window.removeEventListener('online', runSync);
+    };
+  }, []);
 
+  // Global Command+K shortcut
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -90,16 +93,16 @@ const MainApp: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('online', handleOnline);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [modals]);
+  }, [modals.toggleCommandPalette]);
 
   // Guard Clause: Source Detail View vs Reader View Mode
   if (selectedSourceId && activeSource) {
     const isReadableArticle =
-      (activeSource.type === 'article' || activeSource.type === 'pdf') &&
-      Boolean(activeSource.content_html && activeSource.content_html.trim().length > 0);
+      activeSource.type === 'youtube' ||
+      ((activeSource.type === 'article' || activeSource.type === 'pdf') &&
+        Boolean(activeSource.content_html && activeSource.content_html.trim().length > 0));
 
     // If opened from Articles tab or user explicitly clicked "Read Full Article", show ReaderView
     if (isReadableArticle && (currentTab === 'articles' || forceReaderMode)) {
@@ -242,6 +245,9 @@ const MainApp: React.FC = () => {
             onUpdateStatus={(id, status) =>
               updateSource({ id, updates: { reading_status: status } })
             }
+            onToggleFavorite={(id, favorite) =>
+              updateSource({ id, updates: { favorite } as any })
+            }
             onDeleteArticle={async (id) => {
               await deleteSource(id);
             }}
@@ -346,6 +352,10 @@ const MainApp: React.FC = () => {
                   color: 'yellow',
                 });
               }
+            }}
+            onOpenSource={(sourceId) => {
+              setSelectedSourceId(sourceId);
+              setForceReaderMode(false);
             }}
           />
         );

@@ -126,6 +126,7 @@ export async function generateEmbedding(
             body: JSON.stringify({
               model: `models/${model}`,
               content: { parts: [{ text: trimmed }] },
+              ...(model === 'gemini-embedding-001' ? { outputDimensionality: 768 } : {}),
             }),
           }
         );
@@ -170,46 +171,107 @@ export async function generateEmbedding(
   };
 }
 
-export async function ensureEmbeddingsTable(db: D1Database): Promise<void> {
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS embeddings (
-      id TEXT PRIMARY KEY,
-      target_type TEXT NOT NULL DEFAULT 'highlight',
-      embedding TEXT NOT NULL,
-      model TEXT NOT NULL,
-      content_hash TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
+export async function ensureEmbeddingsTable(_db: D1Database): Promise<void> {
+  // Schema is managed via D1 migrations (0005_core_parity.sql, 0008_stabilization.sql)
 }
 
 export interface HighlightForIndex {
   id: string;
+  source_id: string;
   content: string;
   note: string | null;
   source_name: string;
   source_author: string | null;
 }
 
+const VECTORIZE_BATCH_SIZE = 50;
+
+export async function upsertVectorizeBatch(
+  env: Bindings,
+  vectors: VectorizeVector[]
+): Promise<boolean> {
+  if (!env.VECTORIZE || vectors.length === 0) return false;
+  try {
+    for (let i = 0; i < vectors.length; i += VECTORIZE_BATCH_SIZE) {
+      const chunk = vectors.slice(i, i + VECTORIZE_BATCH_SIZE);
+      await env.VECTORIZE.upsert(chunk);
+    }
+    return true;
+  } catch (err) {
+    console.warn('Vectorize upsert error (falling back to D1 only):', err);
+    return false;
+  }
+}
+
+export async function indexHighlightVector(
+  env: Bindings,
+  highlightId: string,
+  customApiKey?: string
+): Promise<void> {
+  await ensureEmbeddingsTable(env.DB);
+  const hl = await env.DB.prepare(`
+    SELECT h.id, h.source_id, h.content, h.note, s.name as source_name, s.author as source_author
+    FROM highlights h
+    JOIN sources s ON s.id = h.source_id
+    WHERE h.id = ? AND h.deleted = 0 AND s.deleted = 0
+    LIMIT 1
+  `)
+    .bind(highlightId)
+    .first<HighlightForIndex>();
+
+  if (!hl) return;
+
+  const textForEmbed = `${hl.content}${hl.note ? `\nNote: ${hl.note}` : ''}\nSource: ${hl.source_name}${hl.source_author ? ` by ${hl.source_author}` : ''}`;
+  const hash = computeContentHash(textForEmbed);
+  const emb = await generateEmbedding(textForEmbed, env, customApiKey);
+
+  await env.DB.prepare(`
+    INSERT INTO embeddings (id, target_type, embedding, model, content_hash, updated_at)
+    VALUES (?, 'highlight', ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      embedding = excluded.embedding,
+      model = excluded.model,
+      content_hash = excluded.content_hash,
+      updated_at = excluded.updated_at
+  `)
+    .bind(hl.id, JSON.stringify(emb.vector), emb.model, hash, new Date().toISOString())
+    .run();
+
+  if (emb.provider !== 'local_trigram') {
+    await upsertVectorizeBatch(env, [
+      {
+        id: hl.id,
+        values: emb.vector,
+        metadata: {
+          highlightId: hl.id,
+          sourceId: hl.source_id,
+        },
+      },
+    ]);
+  }
+}
+
 export async function syncHighlightEmbeddings(
   env: Bindings,
-  options: { customApiKey?: string; batchLimit?: number } = {}
+  options: { customApiKey?: string; batchLimit?: number; force?: boolean } = {}
 ): Promise<{
   indexedCount: number;
   totalHighlights: number;
   model: string;
   provider: EmbeddingProvider;
+  vectorizeSynced: boolean;
 }> {
   await ensureEmbeddingsTable(env.DB);
-  const limit = Math.min(100, Math.max(1, options.batchLimit || 40));
+  const limit = Math.min(40, Math.max(1, options.batchLimit || 35));
 
   // Probe provider & model once
   const probe = await generateEmbedding('probe', env, options.customApiKey);
   const activeModel = probe.model;
   const activeProvider = probe.provider;
+  const expectedDim = probe.vector.length;
 
   const { results: highlights } = await env.DB.prepare(`
-    SELECT h.id, h.content, h.note, s.name as source_name, s.author as source_author
+    SELECT h.id, h.source_id, h.content, h.note, s.name as source_name, s.author as source_author
     FROM highlights h
     JOIN sources s ON s.id = h.source_id
     WHERE h.deleted = 0 AND s.deleted = 0
@@ -217,22 +279,50 @@ export async function syncHighlightEmbeddings(
   `).all<HighlightForIndex>();
 
   const { results: existing } = await env.DB.prepare(
-    `SELECT id, model, content_hash FROM embeddings WHERE target_type = 'highlight'`
-  ).all<Pick<EmbeddingRow, 'id' | 'model' | 'content_hash'>>();
+    `SELECT id, model, content_hash, embedding FROM embeddings WHERE target_type = 'highlight'`
+  ).all<Pick<EmbeddingRow, 'id' | 'model' | 'content_hash' | 'embedding'>>();
 
-  const existingMap = new Map<string, { model: string; content_hash: string }>();
+  const existingMap = new Map<string, { model: string; content_hash: string; vector: number[] | null }>();
   for (const row of existing) {
-    existingMap.set(row.id, { model: row.model, content_hash: row.content_hash });
+    let parsedVec: number[] | null = null;
+    try {
+      const parsed = JSON.parse(row.embedding) as unknown;
+      if (Array.isArray(parsed)) {
+        parsedVec = parsed.filter((n): n is number => typeof n === 'number');
+      }
+    } catch {
+      parsedVec = null;
+    }
+    existingMap.set(row.id, { model: row.model, content_hash: row.content_hash, vector: parsedVec });
   }
 
   let indexedCount = 0;
+  const vectorBatch: VectorizeVector[] = [];
+
   for (const hl of highlights) {
     if (indexedCount >= limit) break;
     const textForEmbed = `${hl.content}${hl.note ? `\nNote: ${hl.note}` : ''}\nSource: ${hl.source_name}${hl.source_author ? ` by ${hl.source_author}` : ''}`;
     const hash = computeContentHash(textForEmbed);
     const prev = existingMap.get(hl.id);
+    const matchesPrev =
+      prev &&
+      prev.model === activeModel &&
+      prev.content_hash === hash &&
+      prev.vector !== null &&
+      prev.vector.length === expectedDim;
 
-    if (prev && prev.model === activeModel && prev.content_hash === hash) {
+    if (matchesPrev) {
+      if (options.force && activeProvider !== 'local_trigram' && prev.vector) {
+        vectorBatch.push({
+          id: hl.id,
+          values: prev.vector,
+          metadata: {
+            highlightId: hl.id,
+            sourceId: hl.source_id,
+          },
+        });
+        indexedCount++;
+      }
       continue;
     }
 
@@ -249,14 +339,28 @@ export async function syncHighlightEmbeddings(
       .bind(hl.id, JSON.stringify(emb.vector), emb.model, hash, new Date().toISOString())
       .run();
 
+    if (emb.provider !== 'local_trigram') {
+      vectorBatch.push({
+        id: hl.id,
+        values: emb.vector,
+        metadata: {
+          highlightId: hl.id,
+          sourceId: hl.source_id,
+        },
+      });
+    }
+
     indexedCount++;
   }
+
+  const vectorizeSynced = await upsertVectorizeBatch(env, vectorBatch);
 
   return {
     indexedCount,
     totalHighlights: highlights.length,
     model: activeModel,
     provider: activeProvider,
+    vectorizeSynced,
   };
 }
 
@@ -277,6 +381,79 @@ export async function semanticSearchHighlights(
   const limit = Math.min(40, Math.max(1, options.limit || 20));
   const queryEmbedding = await generateEmbedding(query, env, options.customApiKey);
 
+  // Keyword boost tokens
+  const queryWords = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+
+  // Primary path: Cloudflare Vectorize (O(1) ANN query, no full-table D1 scan)
+  if (env.VECTORIZE && queryEmbedding.provider !== 'local_trigram') {
+    try {
+      const topK = Math.min(40, Math.max(limit * 2, 20));
+      const vRes = await env.VECTORIZE.query(queryEmbedding.vector, {
+        topK,
+        returnMetadata: 'all',
+      });
+
+      const matches = vRes.matches || [];
+      if (matches.length === 0) {
+        return {
+          highlights: [],
+          model: queryEmbedding.model,
+          provider: queryEmbedding.provider,
+        };
+      }
+
+      const scoreById = new Map<string, number>();
+      const orderedIds: string[] = [];
+      for (const m of matches) {
+        const hlId =
+          typeof m.metadata?.highlightId === 'string' ? m.metadata.highlightId : m.id;
+        if (!scoreById.has(hlId)) {
+          scoreById.set(hlId, m.score);
+          orderedIds.push(hlId);
+        }
+      }
+
+      const placeholders = orderedIds.map(() => '?').join(',');
+      const { results: matchedRows } = await env.DB.prepare(`
+        SELECT h.*, s.name as source_name, s.author as source_author, s.type as source_type, s.url as source_url
+        FROM highlights h
+        JOIN sources s ON s.id = h.source_id
+        WHERE h.deleted = 0 AND s.deleted = 0 AND h.id IN (${placeholders})
+      `)
+        .bind(...orderedIds)
+        .all<HighlightWithSource>();
+
+      const scored: SemanticHighlightMatch[] = matchedRows.map((row) => {
+        const sim = Math.max(0, scoreById.get(row.id) ?? 0);
+        const lowerCombined = `${row.content} ${row.note || ''} ${row.source_name} ${row.source_author || ''}`.toLowerCase();
+        let keywordBoost = 0;
+        if (queryWords.length > 0) {
+          const hits = queryWords.filter((w) => lowerCombined.includes(w)).length;
+          keywordBoost = (hits / queryWords.length) * 0.25;
+        }
+        const combinedScore = Math.min(1, Math.max(0, sim * 0.85 + keywordBoost));
+        return {
+          ...row,
+          similarity: Math.round(combinedScore * 100),
+        };
+      });
+
+      scored.sort((a, b) => b.similarity - a.similarity);
+
+      return {
+        highlights: scored.slice(0, limit),
+        model: queryEmbedding.model,
+        provider: queryEmbedding.provider,
+      };
+    } catch (err) {
+      console.warn('Vectorize query failed, falling back to D1 scan:', err);
+    }
+  }
+
+  // Fallback path (when env.VECTORIZE is undefined in local dev or query failed)
   // Fetch all active highlights joined with their cached embedding for this model
   const { results: rows } = await env.DB.prepare(`
     SELECT h.*, s.name as source_name, s.author as source_author, s.type as source_type, s.url as source_url,
@@ -293,14 +470,11 @@ export async function semanticSearchHighlights(
     }
   >();
 
-  // Keyword boost tokens
-  const queryWords = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
-
   const scored: SemanticHighlightMatch[] = [];
-  let inlineIndexed = 0;
+  const localQueryVector =
+    queryEmbedding.provider === 'local_trigram'
+      ? queryEmbedding.vector
+      : buildLocalSemanticVector(query);
 
   for (const row of rows) {
     const textForEmbed = `${row.content}${row.note ? `\nNote: ${row.note}` : ''}\nSource: ${row.source_name}${row.source_author ? ` by ${row.source_author}` : ''}`;
@@ -322,31 +496,15 @@ export async function semanticSearchHighlights(
       }
     }
 
-    if (!vector) {
-      if (queryEmbedding.provider === 'local_trigram') {
-        vector = buildLocalSemanticVector(textForEmbed);
-      } else if (inlineIndexed < 15) {
-        const generated = await generateEmbedding(textForEmbed, env, options.customApiKey);
-        vector = generated.vector;
-        inlineIndexed++;
-        await env.DB.prepare(`
-          INSERT INTO embeddings (id, target_type, embedding, model, content_hash, updated_at)
-          VALUES (?, 'highlight', ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            embedding = excluded.embedding,
-            model = excluded.model,
-            content_hash = excluded.content_hash,
-            updated_at = excluded.updated_at
-        `)
-          .bind(row.id, JSON.stringify(vector), generated.model, hash, new Date().toISOString())
-          .run();
-      } else {
-        // Skip unindexed items when remote embedding budget cap is hit inline
-        continue;
-      }
+    let sim: number;
+    if (vector && vector.length === queryEmbedding.vector.length) {
+      sim = cosineSimilarity(queryEmbedding.vector, vector);
+    } else {
+      // Score unindexed or mismatched-dimension highlights using fast local trigram fallback
+      // instead of firing inline remote embedding calls or silently dropping rows
+      sim = cosineSimilarity(localQueryVector, buildLocalSemanticVector(textForEmbed)) * 0.75;
     }
 
-    const sim = cosineSimilarity(queryEmbedding.vector, vector);
     const lowerCombined = textForEmbed.toLowerCase();
     let keywordBoost = 0;
     if (queryWords.length > 0) {

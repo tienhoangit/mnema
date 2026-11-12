@@ -44,6 +44,7 @@ export interface SourceMetadata {
   excerpt?: string;
   youtube_id?: string;
   transcript?: TranscriptSegment[];
+  favorite?: boolean;
 }
 
 export interface Source {
@@ -214,4 +215,44 @@ export interface OcrResult {
   passages: string[];
   mode: 'highlights_only' | 'full_page';
   model: string;
+}
+
+export interface TopicClusterHighlight {
+  id: string;
+  content: string;
+  note?: string | null;
+  source_id: string;
+  source_name: string;
+  source_author?: string | null;
+  created_at: string;
+}
+
+export interface TopicCluster {
+  id: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  highlights: TopicClusterHighlight[];
+  reflectionPrompt?: string;
+}
+
+export interface TopicDiscoveryResult {
+  clusters: TopicCluster[];
+  highlightCount: number;
+  tagCount: number;
+  generatedAt: string;
+}
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface CreatedApiKey extends ApiKeyItem {
+  key: string;
 }

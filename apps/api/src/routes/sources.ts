@@ -156,8 +156,16 @@ app.post('/', async (c) => {
       // Pre-parsed article provided by browser extension or client
       // Uses client-extracted readability content to avoid Worker 10ms CPU parse limit
       contentHtml = String(body.content_html);
-      wordCount = body.word_count || contentHtml.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length;
-      readingTime = body.reading_time || Math.max(1, Math.round(wordCount / 200));
+      const parsedWordCount = Number(body.word_count);
+      wordCount =
+        Number.isFinite(parsedWordCount) && parsedWordCount > 0
+          ? Math.round(parsedWordCount)
+          : contentHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+      const parsedReadingTime = Number(body.reading_time);
+      readingTime =
+        Number.isFinite(parsedReadingTime) && parsedReadingTime > 0
+          ? Math.round(parsedReadingTime)
+          : Math.max(1, Math.round(wordCount / 200));
       if (body.metadata) {
         try {
           metadataObj = typeof body.metadata === 'string' ? JSON.parse(body.metadata) : body.metadata;
@@ -179,13 +187,84 @@ app.post('/', async (c) => {
         return c.json({ error: `Failed to parse article: ${err.message}` }, 400);
       }
     }
+  } else if (body.content_html && String(body.content_html).trim().length > 0) {
+    contentHtml = String(body.content_html);
+    const parsedWordCount = Number(body.word_count);
+    wordCount =
+      Number.isFinite(parsedWordCount) && parsedWordCount > 0
+        ? Math.round(parsedWordCount)
+        : contentHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    const parsedReadingTime = Number(body.reading_time);
+    readingTime =
+      Number.isFinite(parsedReadingTime) && parsedReadingTime > 0
+        ? Math.round(parsedReadingTime)
+        : Math.max(1, Math.round(wordCount / 200));
+    if (body.metadata) {
+      try {
+        metadataObj = typeof body.metadata === 'string' ? JSON.parse(body.metadata) : body.metadata;
+      } catch {}
+    }
   } else if (rawHtml) {
     contentHtml = rawHtml;
-    wordCount = rawHtml.replace(/<[^>]+>/g, '').split(/\s+/).length;
+    wordCount = rawHtml.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length;
     readingTime = Math.max(1, Math.round(wordCount / 200));
   }
 
   const now = new Date().toISOString();
+
+  // Deduplicate by URL if a non-deleted source already exists (e.g., stub created by extension highlighter)
+  if (url) {
+    const existing = await c.env.DB.prepare(
+      `SELECT * FROM sources WHERE url = ? AND deleted = 0 LIMIT 1`
+    )
+      .bind(url)
+      .first<any>();
+
+    if (existing) {
+      let existingMeta: Record<string, unknown> = {};
+      if (existing.metadata) {
+        try {
+          existingMeta = JSON.parse(existing.metadata);
+        } catch {}
+      }
+      const mergedMeta = { ...existingMeta, ...metadataObj };
+
+      await c.env.DB.prepare(`
+        UPDATE sources
+        SET name = COALESCE(NULLIF(?, 'Untitled'), name),
+            author = COALESCE(?, author),
+            type = ?,
+            image_url = COALESCE(?, image_url),
+            content_html = COALESCE(?, content_html),
+            word_count = CASE WHEN ? > 0 THEN ? ELSE word_count END,
+            reading_time = CASE WHEN ? > 0 THEN ? ELSE reading_time END,
+            metadata = ?,
+            source_notes = COALESCE(?, source_notes),
+            updated_at = ?
+        WHERE id = ?
+      `).bind(
+        name,
+        author,
+        type,
+        imageUrl,
+        contentHtml,
+        wordCount,
+        wordCount,
+        readingTime,
+        readingTime,
+        JSON.stringify(mergedMeta),
+        body.source_notes || null,
+        now,
+        existing.id
+      ).run();
+
+      const updated = await c.env.DB.prepare(`SELECT * FROM sources WHERE id = ?`)
+        .bind(existing.id)
+        .first();
+      return c.json({ data: updated, deduplicated: true }, 200);
+    }
+  }
+
   await c.env.DB.prepare(`
     INSERT INTO sources (id, name, author, type, url, image_url, content_html, reading_status, word_count, reading_time, metadata, source_notes, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -250,6 +329,22 @@ app.patch('/:id', async (c) => {
   if (body.image_url !== undefined) {
     updates.push('image_url = ?');
     params.push(body.image_url);
+  }
+  if (body.favorite !== undefined) {
+    const current = await c.env.DB.prepare('SELECT metadata FROM sources WHERE id = ?')
+      .bind(id)
+      .first<{ metadata: string | null }>();
+    let metaObj: Record<string, unknown> = {};
+    if (current?.metadata) {
+      try {
+        metaObj = JSON.parse(current.metadata) as Record<string, unknown>;
+      } catch {
+        metaObj = {};
+      }
+    }
+    metaObj.favorite = Boolean(body.favorite);
+    updates.push('metadata = ?');
+    params.push(JSON.stringify(metaObj));
   }
 
   if (updates.length === 0) {

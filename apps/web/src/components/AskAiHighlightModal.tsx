@@ -26,14 +26,32 @@ export const AskAiHighlightModal: React.FC<AskAiHighlightModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Reset thread and messages when a new highlight is loaded or opened
+  // Load existing thread history when opened for a highlight (or start fresh if none exists)
   useEffect(() => {
-    if (isOpen && highlight) {
-      setThreadId(null);
-      setMessages([]);
-      setError(null);
-      setQuestion('');
-    }
+    if (!isOpen || !highlight) return;
+    let active = true;
+    setThreadId(null);
+    setMessages([]);
+    setError(null);
+    setQuestion('');
+
+    api
+      .getAiThreadByHighlight(highlight.id)
+      .then((thread) => {
+        if (!active || !thread) return;
+        setThreadId(thread.id);
+        setMessages(
+          thread.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          }))
+        );
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
   }, [isOpen, highlight?.id]);
 
   useEffect(() => {

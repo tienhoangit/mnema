@@ -1,4 +1,4 @@
-import { getConfig, saveConfig } from './storage';
+import { buildAuthHeaders, getConfig, saveConfig } from './storage';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
@@ -8,12 +8,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingsPanel = document.getElementById('settings-panel') as HTMLDivElement;
   const apiUrlInput = document.getElementById('api-url') as HTMLInputElement;
   const apiTokenInput = document.getElementById('api-token') as HTMLInputElement;
+  const cfAccessClientIdInput = document.getElementById('cf-access-client-id') as HTMLInputElement;
+  const cfAccessClientSecretInput = document.getElementById('cf-access-client-secret') as HTMLInputElement;
   const saveSettingsBtn = document.getElementById('save-settings-btn') as HTMLButtonElement;
 
   // Load existing settings
   const config = await getConfig();
   if (apiUrlInput) apiUrlInput.value = config.apiUrl;
   if (apiTokenInput) apiTokenInput.value = config.apiToken;
+  if (cfAccessClientIdInput) cfAccessClientIdInput.value = config.cfAccessClientId;
+  if (cfAccessClientSecretInput) cfAccessClientSecretInput.value = config.cfAccessClientSecret;
 
   toggleSettingsBtn?.addEventListener('click', () => {
     const isHidden = settingsPanel.style.display === 'none';
@@ -24,6 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     await saveConfig({
       apiUrl: apiUrlInput.value.trim(),
       apiToken: apiTokenInput.value.trim(),
+      cfAccessClientId: cfAccessClientIdInput?.value.trim() ?? '',
+      cfAccessClientSecret: cfAccessClientSecretInput?.value.trim() ?? '',
     });
     showStatus('Settings saved!', 'success');
     settingsPanel.style.display = 'none';
@@ -62,10 +68,26 @@ document.addEventListener('DOMContentLoaded', async () => {
           // Clone DOM so Readability does not mutate active webpage
           const docClone = document.cloneNode(true) as Document;
 
+          // Resolve relative image URLs before Readability extraction
+          try {
+            const base = new URL(window.location.href);
+            docClone.querySelectorAll('img').forEach((img) => {
+              const src = img.getAttribute('src');
+              if (src && !src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('data:')) {
+                try {
+                  img.setAttribute('src', new URL(src, base).href);
+                } catch {}
+              }
+            });
+          } catch {}
+
           let title = document.title || 'Untitled Article';
           let author: string | null = null;
           let leadImage: string | null = null;
           let contentHtml = '';
+          let excerpt: string | null = null;
+          let siteName: string | null =
+            document.querySelector('meta[property="og:site_name"]')?.getAttribute('content') || null;
           let wordCount = 0;
           let readingTime = 1;
 
@@ -78,6 +100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 title = article.title || title;
                 author = article.byline || null;
                 contentHtml = article.content || '';
+                excerpt = article.excerpt || null;
+                siteName = article.siteName || siteName;
                 const text = article.textContent || '';
                 wordCount = text.trim().split(/\s+/).filter(Boolean).length;
                 readingTime = Math.max(1, Math.round(wordCount / 200));
@@ -129,6 +153,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             author,
             leadImage,
             contentHtml,
+            excerpt,
+            siteName,
             wordCount,
             readingTime,
             url: window.location.href,
@@ -146,13 +172,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const currentConfig = await getConfig();
       const readingStatus = statusSelect.value || 'inbox';
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (currentConfig.apiToken) {
-        headers['Authorization'] = `Bearer ${currentConfig.apiToken}`;
-        headers['X-Api-Key'] = currentConfig.apiToken;
-      }
+      const headers = buildAuthHeaders(currentConfig);
 
       const res = await fetch(`${currentConfig.apiUrl}/api/sources`, {
         method: 'POST',
@@ -167,6 +187,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           word_count: extracted.wordCount,
           reading_time: extracted.readingTime,
           reading_status: readingStatus,
+          metadata: {
+            site_name: extracted.siteName,
+            excerpt: extracted.excerpt,
+            clipped_by: 'extension-readability',
+          },
         }),
       });
 

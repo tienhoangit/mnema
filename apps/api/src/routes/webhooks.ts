@@ -5,7 +5,7 @@ import { parseIncomingNewsletter, escapeHtml, sanitizeNewsletterHtml } from '../
 import { parseArticleFromUrl } from '../services/readability';
 import { extractYouTubeVideoId, fetchYouTubeTranscript } from '../services/youtube';
 import { runBookPageOcr } from '../services/ocr';
-import { askLibraryAi } from '../services/semantic';
+import { askLibraryAi, indexHighlightVector } from '../services/semantic';
 import { calculateSM2ByQuality, SM2Quality, SRSState } from '../services/srs';
 import {
   answerTelegramCallbackQuery,
@@ -383,6 +383,7 @@ async function handleTelegramPhoto(
         await attachTagsToHighlight(env.DB, highlightId, tags);
       }
       await logHighlightActivity(env.DB, now, sourceId, highlightId);
+      await indexHighlightVector(env, highlightId).catch(() => {});
     }
 
     const formatted = passages.map((p, idx) => `${idx + 1}. “${p}”`).join('\n\n');
@@ -580,12 +581,68 @@ export async function handleTelegramUpdate(
   }
 
   const result = await processTelegramMessage(env.DB, msg);
+  if (result.highlightId) {
+    await indexHighlightVector(env, result.highlightId).catch(() => {});
+  }
   if (botToken && chatId) {
     await sendTelegramMessage(botToken, chatId, result.replyText);
   }
 }
 
 // POST /api/webhooks/newsletter and /api/webhooks/newsletter/:secret
+export async function ingestNewsletterPayload(
+  env: Bindings,
+  payload: string | Record<string, unknown>
+): Promise<SourceRow | null> {
+  const email = parseIncomingNewsletter(payload);
+  if (!email.html && !email.text) {
+    return null;
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const wordCount = email.text ? email.text.split(/\s+/).filter(Boolean).length : 0;
+  const readingTime = Math.max(1, Math.round(wordCount / 200));
+  const metadata = JSON.stringify({
+    newsletter: true,
+    from_email: email.fromEmail,
+    from_name: email.fromName,
+    received_at: now,
+    excerpt: email.text.slice(0, 180),
+  });
+
+  await env.DB.prepare(
+    `INSERT INTO sources (id, name, author, type, content_html, reading_status, word_count, reading_time, metadata, created_at, updated_at)
+     VALUES (?, ?, ?, 'article', ?, 'inbox', ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      id,
+      email.subject,
+      email.fromName || email.fromEmail || 'Newsletter',
+      email.html,
+      wordCount,
+      readingTime,
+      metadata,
+      now,
+      now
+    )
+    .run();
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO activity_log (id, activity_date, action_type, source_id) VALUES (?, ?, 'read_article', ?)`
+    )
+      .bind(crypto.randomUUID(), now.split('T')[0], id)
+      .run();
+  } catch {
+    // non-fatal
+  }
+
+  return await env.DB.prepare(`SELECT * FROM sources WHERE id = ?`)
+    .bind(id)
+    .first<SourceRow>();
+}
+
 async function handleNewsletterWebhook(c: {
   req: {
     param: (name: string) => string | undefined;
@@ -625,53 +682,10 @@ async function handleNewsletterWebhook(c: {
     return c.json({ error: 'Invalid newsletter webhook secret' }, 401);
   }
 
-  const email = parseIncomingNewsletter(parsedPayload);
-  if (!email.html && !email.text) {
+  const created = await ingestNewsletterPayload(c.env, parsedPayload);
+  if (!created) {
     return c.json({ error: 'Email content is empty' }, 400);
   }
-
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  const wordCount = email.text ? email.text.split(/\s+/).filter(Boolean).length : 0;
-  const readingTime = Math.max(1, Math.round(wordCount / 200));
-  const metadata = JSON.stringify({
-    newsletter: true,
-    from_email: email.fromEmail,
-    from_name: email.fromName,
-    received_at: now,
-    excerpt: email.text.slice(0, 180),
-  });
-
-  await c.env.DB.prepare(
-    `INSERT INTO sources (id, name, author, type, content_html, reading_status, word_count, reading_time, metadata, created_at, updated_at)
-     VALUES (?, ?, ?, 'article', ?, 'inbox', ?, ?, ?, ?, ?)`
-  )
-    .bind(
-      id,
-      email.subject,
-      email.fromName || email.fromEmail || 'Newsletter',
-      email.html,
-      wordCount,
-      readingTime,
-      metadata,
-      now,
-      now
-    )
-    .run();
-
-  try {
-    await c.env.DB.prepare(
-      `INSERT INTO activity_log (id, activity_date, action_type, source_id) VALUES (?, ?, 'read_article', ?)`
-    )
-      .bind(crypto.randomUUID(), now.split('T')[0], id)
-      .run();
-  } catch {
-    // non-fatal
-  }
-
-  const created = await c.env.DB.prepare(`SELECT * FROM sources WHERE id = ?`)
-    .bind(id)
-    .first<SourceRow>();
 
   return c.json({ success: true, data: created }, 201);
 }

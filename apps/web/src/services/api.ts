@@ -18,6 +18,9 @@ import {
   SemanticSearchResult,
   EmbeddingsStatus,
   OcrResult,
+  TopicDiscoveryResult,
+  ApiKeyItem,
+  CreatedApiKey,
 } from '../types';
 import { getArticleOffline, getAllOfflineArticles } from './offlineDb';
 
@@ -555,6 +558,18 @@ export const api = {
     return json.data.answer;
   },
 
+  async getAiThreadByHighlight(highlightId: string): Promise<{
+    id: string;
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  } | null> {
+    const res = await fetch(`${API_BASE}/ai/threads?highlight_id=${encodeURIComponent(highlightId)}`);
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      data: { id: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> } | null;
+    };
+    return json.data;
+  },
+
   async askHighlightMultiTurn(data: {
     threadId?: string;
     highlightId?: string;
@@ -596,6 +611,40 @@ export const api = {
     if (!res.ok) return [];
     const json = (await res.json()) as { data?: { tags?: string[] } };
     return json.data?.tags || [];
+  },
+
+  async inlineAiAction(params: {
+    action: 'explain' | 'translate';
+    text: string;
+    context?: string;
+    targetLang?: 'vi' | 'en';
+    apiKey?: string;
+  }): Promise<{ action: 'explain' | 'translate'; result: string }> {
+    const res = await fetch(`${API_BASE}/ai/inline-action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Ghostreader request failed'));
+    }
+    const json = (await res.json()) as {
+      data: { action: 'explain' | 'translate'; result: string };
+    };
+    return json.data;
+  },
+
+  async discoverTopics(apiKey?: string): Promise<TopicDiscoveryResult> {
+    const res = await fetch(`${API_BASE}/ai/discover-topics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey }),
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Failed to discover AI topics'));
+    }
+    const json = (await res.json()) as { data: TopicDiscoveryResult };
+    return json.data;
   },
 
   // Email, Digest & User Settings
@@ -872,5 +921,37 @@ export const api = {
     }
     const json = (await res.json()) as { data: PublicSharePayload };
     return json.data;
+  },
+
+  // Public REST API Keys
+  async getApiKeys(): Promise<ApiKeyItem[]> {
+    const res = await fetch(`${API_BASE}/keys`);
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Failed to load API keys'));
+    }
+    const json = (await res.json()) as { data: ApiKeyItem[] };
+    return json.data || [];
+  },
+
+  async createApiKey(name: string, scopes = 'read,write'): Promise<CreatedApiKey> {
+    const res = await fetch(`${API_BASE}/keys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, scopes }),
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Failed to create API key'));
+    }
+    const json = (await res.json()) as { data: CreatedApiKey };
+    return json.data;
+  },
+
+  async revokeApiKey(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/keys/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'Failed to revoke API key'));
+    }
   },
 };

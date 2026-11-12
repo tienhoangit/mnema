@@ -156,6 +156,7 @@ export function useLibraryData({ currentTab, searchQuery, selectedSourceId }: Us
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['sources'] });
+    queryClient.invalidateQueries({ queryKey: ['source'] });
     queryClient.invalidateQueries({ queryKey: ['highlights'] });
     queryClient.invalidateQueries({ queryKey: ['all-highlights'] });
     queryClient.invalidateQueries({ queryKey: ['review-queue'] });

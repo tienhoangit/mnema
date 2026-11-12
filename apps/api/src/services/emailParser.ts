@@ -193,17 +193,30 @@ export function parseIncomingNewsletter(
   const rawFrom =
     typeof payload.from === 'string'
       ? payload.from
+      : typeof payload.From === 'string'
+      ? payload.From
       : typeof payload.sender === 'string'
       ? payload.sender
       : null;
   const fromParsed = parseFromHeader(rawFrom);
   const subject =
     (typeof payload.subject === 'string' && payload.subject.trim()) ||
+    (typeof payload.Subject === 'string' && payload.Subject.trim()) ||
     (typeof payload.title === 'string' && payload.title.trim()) ||
     'Newsletter Issue';
 
-  const rawHtml = typeof payload.html === 'string' ? payload.html.trim() : '';
-  const rawText = typeof payload.text === 'string' ? payload.text.trim() : '';
+  const rawHtml =
+    typeof payload.html === 'string'
+      ? payload.html.trim()
+      : typeof payload.HtmlBody === 'string'
+      ? payload.HtmlBody.trim()
+      : '';
+  const rawText =
+    typeof payload.text === 'string'
+      ? payload.text.trim()
+      : typeof payload.TextBody === 'string'
+      ? payload.TextBody.trim()
+      : '';
 
   const html = rawHtml ? sanitizeNewsletterHtml(rawHtml) : textToHtml(rawText);
   const text =

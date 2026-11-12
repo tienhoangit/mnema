@@ -56,6 +56,7 @@ app.post('/kindle', async (c) => {
 
   let totalImported = 0;
   let booksCreated = 0;
+  const statements: D1PreparedStatement[] = [];
 
   for (const [title, highlights] of booksMap.entries()) {
     const existingBook = await c.env.DB.prepare(
@@ -65,39 +66,46 @@ app.post('/kindle', async (c) => {
       .first<{ id: string }>();
 
     let sourceId = existingBook?.id;
+    const now = new Date().toISOString();
     if (!sourceId) {
       sourceId = crypto.randomUUID();
       const author = highlights[0]?.author || null;
-      const now = new Date().toISOString();
 
-      await c.env.DB.prepare(
-        `INSERT INTO sources (id, name, author, type, reading_status, created_at, updated_at)
-         VALUES (?, ?, ?, 'book', 'archive', ?, ?)`
-      )
-        .bind(sourceId, title, author, now, now)
-        .run();
+      statements.push(
+        c.env.DB.prepare(
+          `INSERT INTO sources (id, name, author, type, reading_status, created_at, updated_at)
+           VALUES (?, ?, ?, 'book', 'archive', ?, ?)`
+        ).bind(sourceId, title, author, now, now)
+      );
       booksCreated++;
     }
 
-    for (const hl of highlights) {
-      const exists = await c.env.DB.prepare(
-        `SELECT id FROM highlights WHERE source_id = ? AND content = ? AND deleted = 0`
+    const existingSet = new Set<string>();
+    if (existingBook) {
+      const { results: existingRows } = await c.env.DB.prepare(
+        `SELECT content FROM highlights WHERE source_id = ? AND deleted = 0`
       )
-        .bind(sourceId, hl.content)
-        .first<{ id: string }>();
+        .bind(sourceId)
+        .all<{ content: string }>();
+      for (const r of existingRows) existingSet.add(r.content);
+    }
 
-      if (!exists) {
-        const hlId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        await c.env.DB.prepare(
+    for (const hl of highlights) {
+      if (existingSet.has(hl.content)) continue;
+      existingSet.add(hl.content);
+      const hlId = crypto.randomUUID();
+      statements.push(
+        c.env.DB.prepare(
           `INSERT INTO highlights (id, source_id, content, location, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?)`
-        )
-          .bind(hlId, sourceId, hl.content, hl.location, now, now)
-          .run();
-        totalImported++;
-      }
+        ).bind(hlId, sourceId, hl.content, hl.location, now, now)
+      );
+      totalImported++;
     }
+  }
+
+  for (let i = 0; i < statements.length; i += 50) {
+    await c.env.DB.batch(statements.slice(i, i + 50));
   }
 
   return c.json({
@@ -135,8 +143,12 @@ app.post('/csv', async (c) => {
   }
 
   const sourceCache = new Map<string, string>();
+  const existingHighlightsBySource = new Map<string, Set<string>>();
+  const statements: D1PreparedStatement[] = [];
+  const pendingTags: Array<{ hlId: string; tags: string[] }> = [];
   let booksCreated = 0;
   let highlightsImported = 0;
+  const now = new Date().toISOString();
 
   for (const rec of parsed.records) {
     const cacheKey = rec.sourceTitle.toLowerCase().trim();
@@ -151,14 +163,19 @@ app.post('/csv', async (c) => {
 
       if (existing) {
         sourceId = existing.id;
+        const { results: existingRows } = await c.env.DB.prepare(
+          `SELECT content FROM highlights WHERE source_id = ? AND deleted = 0`
+        )
+          .bind(sourceId)
+          .all<{ content: string }>();
+        existingHighlightsBySource.set(sourceId, new Set(existingRows.map((r) => r.content)));
       } else {
         sourceId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        await c.env.DB.prepare(
-          `INSERT INTO sources (id, name, author, type, reading_status, source_notes, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-          .bind(
+        statements.push(
+          c.env.DB.prepare(
+            `INSERT INTO sources (id, name, author, type, reading_status, source_notes, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
             sourceId,
             rec.sourceTitle,
             rec.sourceAuthor,
@@ -168,27 +185,23 @@ app.post('/csv', async (c) => {
             now,
             now
           )
-          .run();
+        );
+        existingHighlightsBySource.set(sourceId, new Set());
         booksCreated++;
       }
       sourceCache.set(cacheKey, sourceId);
     }
 
     if (rec.highlightContent) {
-      const duplicate = await c.env.DB.prepare(
-        `SELECT id FROM highlights WHERE source_id = ? AND content = ? AND deleted = 0`
-      )
-        .bind(sourceId, rec.highlightContent)
-        .first<{ id: string }>();
-
-      if (!duplicate) {
+      const existingSet = existingHighlightsBySource.get(sourceId)!;
+      if (!existingSet.has(rec.highlightContent)) {
+        existingSet.add(rec.highlightContent);
         const hlId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        await c.env.DB.prepare(
-          `INSERT INTO highlights (id, source_id, content, note, color, location, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-          .bind(
+        statements.push(
+          c.env.DB.prepare(
+            `INSERT INTO highlights (id, source_id, content, note, color, location, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
             hlId,
             sourceId,
             rec.highlightContent,
@@ -198,14 +211,20 @@ app.post('/csv', async (c) => {
             now,
             now
           )
-          .run();
-
+        );
         if (rec.tags.length > 0) {
-          await attachTagsToHighlight(c.env.DB, hlId, rec.tags);
+          pendingTags.push({ hlId, tags: rec.tags });
         }
         highlightsImported++;
       }
     }
+  }
+
+  for (let i = 0; i < statements.length; i += 50) {
+    await c.env.DB.batch(statements.slice(i, i + 50));
+  }
+  for (const item of pendingTags) {
+    await attachTagsToHighlight(c.env.DB, item.hlId, item.tags);
   }
 
   return c.json({
@@ -363,12 +382,21 @@ app.post('/json', async (c) => {
     const title = (item.title || item.name || item.bookTitle || 'Imported Source').trim();
     const author = (item.author || item.byline || null)?.trim() || null;
     const type = item.type || (item.bookTitle ? 'book' : item.url?.includes('x.com') || item.url?.includes('twitter.com') ? 'tweet' : 'article');
-    const url = item.url?.trim() || null;
+    const rawUrl = item.url?.trim() || null;
+    const isGenericKindleUrl = rawUrl?.includes('read.amazon.com/notebook') ?? false;
+    const url = type === 'book' && isGenericKindleUrl ? null : rawUrl;
     const imageUrl = item.image_url || item.imageUrl || null;
 
-    // Check if source already exists by url or name+type
+    // Check if source already exists: for books match name+type first, otherwise url first
     let sourceId: string | null = null;
-    if (url) {
+    if (type === 'book') {
+      const existing = await c.env.DB.prepare(
+        'SELECT id FROM sources WHERE name = ? AND type = ? AND deleted = 0 LIMIT 1'
+      ).bind(title, type).first<{ id: string }>();
+      if (existing) sourceId = existing.id;
+    }
+
+    if (!sourceId && url) {
       const existing = await c.env.DB.prepare(
         'SELECT id FROM sources WHERE url = ? AND deleted = 0 LIMIT 1'
       ).bind(url).first<{ id: string }>();
@@ -382,12 +410,23 @@ app.post('/json', async (c) => {
       if (existing) sourceId = existing.id;
     }
 
-    if (!sourceId) {
+    const statements: D1PreparedStatement[] = [];
+    const pendingTags: Array<{ hlId: string; tags: string[] }> = [];
+    const existingSet = new Set<string>();
+
+    if (sourceId) {
+      const { results: existingRows } = await c.env.DB.prepare(
+        'SELECT content FROM highlights WHERE source_id = ? AND deleted = 0'
+      ).bind(sourceId).all<{ content: string }>();
+      for (const r of existingRows) existingSet.add(r.content);
+    } else {
       sourceId = crypto.randomUUID();
-      await c.env.DB.prepare(`
-        INSERT INTO sources (id, name, author, type, url, image_url, reading_status, word_count, reading_time, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'inbox', 0, 1, ?, ?)
-      `).bind(sourceId, title, author, type, url, imageUrl, now, now).run();
+      statements.push(
+        c.env.DB.prepare(`
+          INSERT INTO sources (id, name, author, type, url, image_url, reading_status, word_count, reading_time, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'inbox', 0, 1, ?, ?)
+        `).bind(sourceId, title, author, type, url, imageUrl, now, now)
+      );
       sourcesCreated++;
     }
 
@@ -400,35 +439,38 @@ app.post('/json', async (c) => {
 
     for (const hl of itemHighlights) {
       const content = (hl.content || hl.text || '').trim();
-      if (!content) continue;
-
-      // Check deduplication
-      const duplicate = await c.env.DB.prepare(
-        'SELECT id FROM highlights WHERE source_id = ? AND content = ? AND deleted = 0'
-      ).bind(sourceId, content).first();
-
-      if (duplicate) continue;
+      if (!content || existingSet.has(content)) continue;
+      existingSet.add(content);
 
       const hlId = crypto.randomUUID();
-      await c.env.DB.prepare(`
-        INSERT INTO highlights (id, source_id, content, note, color, location, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        hlId,
-        sourceId,
-        content,
-        hl.note?.trim() || null,
-        hl.color || 'yellow',
-        hl.location || null,
-        now,
-        now
-      ).run();
+      statements.push(
+        c.env.DB.prepare(`
+          INSERT INTO highlights (id, source_id, content, note, color, location, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          hlId,
+          sourceId,
+          content,
+          hl.note?.trim() || null,
+          hl.color || 'yellow',
+          hl.location || null,
+          now,
+          now
+        )
+      );
 
       if (Array.isArray(hl.tags) && hl.tags.length > 0) {
-        await attachTagsToHighlight(c.env.DB, hlId, hl.tags);
+        pendingTags.push({ hlId, tags: hl.tags });
       }
 
       totalImported++;
+    }
+
+    for (let i = 0; i < statements.length; i += 50) {
+      await c.env.DB.batch(statements.slice(i, i + 50));
+    }
+    for (const t of pendingTags) {
+      await attachTagsToHighlight(c.env.DB, t.hlId, t.tags);
     }
   }
 

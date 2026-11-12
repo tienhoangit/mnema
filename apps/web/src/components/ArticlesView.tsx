@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   FileText,
   Youtube,
@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Loader2,
   BookOpen,
+  Star,
 } from 'lucide-react';
 import { Source, ReadingStatus, RssFeed } from '../types';
 import { SourceTypeBadge } from './shared/SourceBadges';
@@ -23,16 +24,28 @@ interface ArticlesViewProps {
   sources: Source[];
   onSelectArticle: (id: string) => void;
   onUpdateStatus: (id: string, status: ReadingStatus) => void;
+  onToggleFavorite?: (id: string, favorite: boolean) => void;
   onDeleteArticle: (id: string, name: string) => void;
   onOpenSaveArticle: () => void;
   onRefreshLibrary?: () => void;
   initialCategory?: string;
 }
 
+function isSourceFavorite(source: Source): boolean {
+  if (!source.metadata) return false;
+  try {
+    const parsed = JSON.parse(source.metadata) as { favorite?: boolean };
+    return Boolean(parsed.favorite);
+  } catch {
+    return false;
+  }
+}
+
 export const ArticlesView: React.FC<ArticlesViewProps> = ({
   sources,
   onSelectArticle,
   onUpdateStatus,
+  onToggleFavorite,
   onDeleteArticle,
   onOpenSaveArticle,
   onRefreshLibrary,
@@ -41,6 +54,8 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>(initialCategory);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search.trim(), 200);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // RSS Feed Subscriptions State
   const [feeds, setFeeds] = useState<RssFeed[]>([]);
@@ -145,6 +160,71 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
     }
     return true;
   });
+
+  useEffect(() => {
+    setFocusedIndex(0);
+  }, [activeCategory, debouncedSearch]);
+
+  useEffect(() => {
+    if (filteredArticles.length > 0 && focusedIndex >= filteredArticles.length) {
+      setFocusedIndex(filteredArticles.length - 1);
+    }
+  }, [filteredArticles.length, focusedIndex]);
+
+  useEffect(() => {
+    if (activeCategory === 'rss' || filteredArticles.length === 0) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable ||
+          target.closest('[contenteditable="true"], [contenteditable=""]'))
+      ) {
+        return;
+      }
+
+      if (document.querySelector('[role="dialog"], [aria-modal="true"], .fixed.inset-0.z-50')) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      const current = filteredArticles[focusedIndex];
+
+      if (key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = Math.min(filteredArticles.length - 1, focusedIndex + 1);
+        setFocusedIndex(next);
+        itemRefs.current[next]?.scrollIntoView({ block: 'nearest' });
+      } else if (key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = Math.max(0, focusedIndex - 1);
+        setFocusedIndex(prev);
+        itemRefs.current[prev]?.scrollIntoView({ block: 'nearest' });
+      } else if ((e.key === 'Enter' || key === 'o') && current) {
+        if (e.key === 'Enter' && target?.closest('button, a')) return;
+        e.preventDefault();
+        onSelectArticle(current.id);
+      } else if (key === 'e' && current) {
+        e.preventDefault();
+        onUpdateStatus(current.id, 'archive');
+      } else if (key === 'l' && current) {
+        e.preventDefault();
+        onUpdateStatus(current.id, 'later');
+      } else if ((key === 's' || key === 'f') && current) {
+        e.preventDefault();
+        onToggleFavorite?.(current.id, !isSourceFavorite(current));
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeCategory, filteredArticles, focusedIndex, onSelectArticle, onUpdateStatus, onToggleFavorite]);
 
   const categories = [
     { id: 'all', label: 'All Articles', icon: FileText, count: articleSources.length },
@@ -393,11 +473,22 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                 onAction={onOpenSaveArticle}
               />
             ) : (
-              filteredArticles.map((art) => (
+              filteredArticles.map((art, idx) => {
+                const isFocused = idx === focusedIndex;
+                const isFav = isSourceFavorite(art);
+                return (
                 <div
                   key={art.id}
+                  ref={(el) => {
+                    itemRefs.current[idx] = el;
+                  }}
+                  onMouseEnter={() => setFocusedIndex(idx)}
                   onClick={() => onSelectArticle(art.id)}
-                  className="p-4 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:border-teal-700/60 transition-all cursor-pointer group shadow-2xs flex items-center justify-between gap-4"
+                  className={`p-4 rounded-2xl border bg-white dark:bg-neutral-900 transition-all cursor-pointer group shadow-2xs flex items-center justify-between gap-4 ${
+                    isFocused
+                      ? 'border-teal-700/70 ring-2 ring-teal-600/25 dark:ring-teal-500/25'
+                      : 'border-neutral-200/80 dark:border-neutral-800 hover:border-teal-700/60'
+                  }`}
                 >
                   <div className="flex items-start gap-3.5 min-w-0">
                     <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-400 flex items-center justify-center shrink-0">
@@ -418,20 +509,35 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                   </div>
 
                   <div
-                    className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className={`flex items-center gap-1 transition-opacity ${
+                      isFav ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {onToggleFavorite && (
+                      <button
+                        onClick={() => onToggleFavorite(art.id, !isFav)}
+                        className={`p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
+                          isFav
+                            ? 'text-amber-500'
+                            : 'text-neutral-400 hover:text-amber-500'
+                        }`}
+                        title="Favorite (s / f)"
+                      >
+                        <Star className={`w-4 h-4 ${isFav ? 'fill-amber-500' : ''}`} />
+                      </button>
+                    )}
                     <button
                       onClick={() => onUpdateStatus(art.id, 'later')}
                       className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                      title="Read later"
+                      title="Read later (l)"
                     >
                       <Clock className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onUpdateStatus(art.id, 'archive')}
                       className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                      title="Archive"
+                      title="Archive (e)"
                     >
                       <Archive className="w-4 h-4" />
                     </button>
@@ -446,7 +552,8 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                     </button>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

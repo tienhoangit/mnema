@@ -165,13 +165,20 @@ app.post('/notion/sync', async (c) => {
   }
 
   const { results: sources } = await c.env.DB.prepare(
-    `SELECT * FROM sources WHERE deleted = 0 ORDER BY updated_at DESC LIMIT 25`
+    `SELECT * FROM sources WHERE deleted = 0 ORDER BY updated_at DESC LIMIT 50`
   ).all<SourceRow>();
 
   let syncedCount = 0;
   let skippedCount = 0;
+  let apiCalls = 0;
+  let hasMore = false;
 
   for (const src of sources) {
+    if (apiCalls >= 15) {
+      hasMore = true;
+      break;
+    }
+
     let metaObj: Record<string, unknown> = {};
     if (src.metadata) {
       try {
@@ -181,8 +188,91 @@ app.post('/notion/sync', async (c) => {
       }
     }
 
-    if (!body.force && typeof metaObj.notion_page_id === 'string' && metaObj.notion_page_id) {
-      skippedCount++;
+    const existingPageId =
+      !body.force && typeof metaObj.notion_page_id === 'string' && metaObj.notion_page_id
+        ? metaObj.notion_page_id
+        : null;
+    const lastSyncedAt =
+      existingPageId && typeof metaObj.notion_synced_at === 'string' && metaObj.notion_synced_at
+        ? metaObj.notion_synced_at
+        : null;
+
+    if (existingPageId) {
+      const { results: newHighlights } = await c.env.DB.prepare(
+        lastSyncedAt
+          ? `SELECT h.*, s.name as source_name, s.author as source_author, s.type as source_type
+             FROM highlights h
+             JOIN sources s ON s.id = h.source_id
+             WHERE h.source_id = ? AND h.deleted = 0 AND h.created_at > ?
+             ORDER BY h.created_at ASC
+             LIMIT 45`
+          : `SELECT h.*, s.name as source_name, s.author as source_author, s.type as source_type
+             FROM highlights h
+             JOIN sources s ON s.id = h.source_id
+             WHERE h.source_id = ? AND h.deleted = 0
+             ORDER BY h.created_at ASC
+             LIMIT 45`
+      )
+        .bind(...(lastSyncedAt ? [src.id, lastSyncedAt] : [src.id]))
+        .all<HighlightWithSource>();
+
+      if (newHighlights.length === 0) {
+        skippedCount++;
+        continue;
+      }
+
+      const appendBlocks: Array<Record<string, unknown>> = [];
+      for (const h of newHighlights) {
+        appendBlocks.push({
+          object: 'block',
+          type: 'quote',
+          quote: {
+            rich_text: [{ type: 'text', text: { content: h.content.slice(0, 1900) } }],
+          },
+        });
+        if (h.note) {
+          appendBlocks.push({
+            object: 'block',
+            type: 'paragraph',
+            paragraph: {
+              rich_text: [
+                { type: 'text', text: { content: `Note: ${h.note.slice(0, 1900)}` } },
+              ],
+            },
+          });
+        }
+      }
+
+      apiCalls++;
+      const patchRes = await fetch(`https://api.notion.com/v1/blocks/${existingPageId}/children`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          children: appendBlocks.slice(0, 95),
+        }),
+      });
+
+      if (!patchRes.ok) {
+        const errData = (await patchRes.json().catch(() => ({}))) as NotionPageResponse;
+        return c.json(
+          {
+            error: errData.message || `Notion block append failed (HTTP ${patchRes.status})`,
+            syncedCount,
+          },
+          502
+        );
+      }
+
+      metaObj.notion_synced_at = new Date().toISOString();
+      await c.env.DB.prepare(`UPDATE sources SET metadata = ? WHERE id = ?`)
+        .bind(JSON.stringify(metaObj), src.id)
+        .run();
+
+      syncedCount++;
       continue;
     }
 
@@ -287,6 +377,7 @@ app.post('/notion/sync', async (c) => {
       pageProperties.URL = { url: src.url };
     }
 
+    apiCalls++;
     const createRes = await fetch('https://api.notion.com/v1/pages', {
       method: 'POST',
       headers: {
@@ -326,6 +417,7 @@ app.post('/notion/sync', async (c) => {
     data: {
       syncedCount,
       skippedCount,
+      hasMore,
       databaseTitle: dbJson.title?.map((t) => t.plain_text || '').join('') || 'Notion DB',
     },
   });

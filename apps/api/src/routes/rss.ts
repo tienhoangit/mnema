@@ -6,26 +6,20 @@ import { escapeHtml, sanitizeNewsletterHtml } from '../services/emailParser';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-async function ensureRssTable(db: D1Database): Promise<void> {
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS rss_feeds (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      url TEXT NOT NULL UNIQUE,
-      site_url TEXT,
-      last_fetched_at TEXT,
-      last_error TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-}
-
 async function syncFeedItems(
   db: D1Database,
   feed: RssFeedRow,
   maxItems = 10,
-  preParsed?: ParsedFeed
+  preParsed?: ParsedFeed,
+  enrichWithReadability = true,
+  budget?: { remainingFetches: number }
 ): Promise<{ added: number; skipped: number; feedTitle: string }> {
+  if (budget && !preParsed) {
+    if (budget.remainingFetches <= 0) {
+      return { added: 0, skipped: 0, feedTitle: feed.title };
+    }
+    budget.remainingFetches--;
+  }
   const parsed = preParsed ?? (await fetchAndParseFeed(feed.url));
   let added = 0;
   let skipped = 0;
@@ -51,8 +45,10 @@ async function syncFeedItems(
     let readingTime = Math.max(1, Math.round(wordCount / 200));
     let excerpt = item.summary;
 
-    // Try enriching with Readability if feed only gave a short snippet
-    if (wordCount < 120) {
+    // Try enriching with Readability if feed only gave a short snippet and subrequest budget allows
+    const canFetchFull = !budget || budget.remainingFetches > 0;
+    if (enrichWithReadability && wordCount < 120 && canFetchFull) {
+      if (budget) budget.remainingFetches--;
       try {
         const full = await parseArticleFromUrl(item.url);
         if (full.wordCount > wordCount) {
@@ -116,7 +112,6 @@ async function syncFeedItems(
 
 // GET /api/rss - List all feeds
 app.get('/', async (c) => {
-  await ensureRssTable(c.env.DB);
   const { results } = await c.env.DB.prepare(
     `SELECT * FROM rss_feeds ORDER BY created_at DESC`
   ).all<RssFeedRow>();
@@ -126,7 +121,6 @@ app.get('/', async (c) => {
 
 // POST /api/rss - Subscribe to a new RSS/Atom feed and sync recent articles
 app.post('/', async (c) => {
-  await ensureRssTable(c.env.DB);
   const body = (await c.req.json()) as { url?: string; sync?: boolean };
   const feedUrl = body.url?.trim();
 
@@ -183,20 +177,23 @@ app.post('/', async (c) => {
   );
 });
 
-// POST /api/rss/sync-all - Refresh all subscribed feeds
+// POST /api/rss/sync-all - Refresh all subscribed feeds within Cloudflare subrequest budget
 app.post('/sync-all', async (c) => {
-  await ensureRssTable(c.env.DB);
   const { results: feeds } = await c.env.DB.prepare(
-    `SELECT * FROM rss_feeds`
+    `SELECT * FROM rss_feeds ORDER BY last_fetched_at ASC NULLS FIRST`
   ).all<RssFeedRow>();
 
+  const budget = { remainingFetches: 25 };
   let totalAdded = 0;
   let errors = 0;
+  let feedsSynced = 0;
 
   for (const feed of feeds) {
+    if (budget.remainingFetches <= 0) break;
     try {
-      const res = await syncFeedItems(c.env.DB, feed, 8);
+      const res = await syncFeedItems(c.env.DB, feed, 5, undefined, true, budget);
       totalAdded += res.added;
+      feedsSynced++;
     } catch (err) {
       errors++;
       const msg = err instanceof Error ? err.message : 'Sync failed';
@@ -209,7 +206,8 @@ app.post('/sync-all', async (c) => {
   return c.json({
     success: true,
     data: {
-      feedsSynced: feeds.length,
+      feedsSynced,
+      totalFeeds: feeds.length,
       addedArticles: totalAdded,
       errors,
     },
@@ -252,5 +250,46 @@ app.delete('/:id', async (c) => {
   await c.env.DB.prepare(`DELETE FROM rss_feeds WHERE id = ?`).bind(id).run();
   return c.json({ success: true });
 });
+
+// Lightweight scheduled RSS sync for Cloudflare Workers Free Tier cron (3-5 feeds/run)
+export async function runScheduledRssSync(
+  db: D1Database,
+  maxFeeds = 4
+): Promise<{ feedsChecked: number; addedArticles: number; errors: number }> {
+  const clampedLimit = Math.min(5, Math.max(1, maxFeeds));
+  const { results: feeds } = await db
+    .prepare(`SELECT * FROM rss_feeds ORDER BY last_fetched_at ASC NULLS FIRST LIMIT ?`)
+    .bind(clampedLimit)
+    .all<RssFeedRow>();
+
+  const budget = { remainingFetches: 20 };
+  let addedArticles = 0;
+  let errors = 0;
+
+  for (const feed of feeds) {
+    if (budget.remainingFetches <= 0) break;
+    try {
+      const res = await syncFeedItems(db, feed, 3, undefined, true, budget);
+      addedArticles += res.added;
+    } catch (err) {
+      errors++;
+      const msg = err instanceof Error ? err.message : 'Scheduled sync failed';
+      try {
+        await db
+          .prepare(`UPDATE rss_feeds SET last_fetched_at = ?, last_error = ? WHERE id = ?`)
+          .bind(new Date().toISOString(), msg.slice(0, 500), feed.id)
+          .run();
+      } catch {
+        // Ignore DB error while recording feed error
+      }
+    }
+  }
+
+  return {
+    feedsChecked: feeds.length,
+    addedArticles,
+    errors,
+  };
+}
 
 export default app;

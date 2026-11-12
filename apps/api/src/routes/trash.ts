@@ -1,8 +1,5 @@
 import { Hono } from 'hono';
-
-type Bindings = {
-  DB: D1Database;
-};
+import { Bindings } from '../types';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -69,23 +66,67 @@ app.delete('/permanent', async (c) => {
   const emptyAll = c.req.query('all') === 'true';
 
   if (emptyAll) {
+    // Collect highlight IDs being permanently purged so we can clean up embeddings & Vectorize
+    const { results: purgedRows } = await c.env.DB.prepare(
+      `SELECT id FROM highlights WHERE deleted = 1 OR source_id IN (SELECT id FROM sources WHERE deleted = 1)`
+    ).all<{ id: string }>();
+    const purgedIds = purgedRows.map((r) => r.id);
+
     // Delete all deleted highlights and any highlights belonging to deleted sources
     await c.env.DB.prepare(
       `DELETE FROM highlights WHERE deleted = 1 OR source_id IN (SELECT id FROM sources WHERE deleted = 1)`
     ).run();
     // Delete all sources with deleted = 1
     await c.env.DB.prepare(`DELETE FROM sources WHERE deleted = 1`).run();
+
+    // Clean up orphaned embeddings in D1 and Vectorize
+    await c.env.DB.prepare(
+      `DELETE FROM embeddings WHERE target_type = 'highlight' AND id NOT IN (SELECT id FROM highlights)`
+    ).run();
+    if (c.env.VECTORIZE && purgedIds.length > 0) {
+      for (let i = 0; i < purgedIds.length; i += 100) {
+        try {
+          await c.env.VECTORIZE.deleteByIds(purgedIds.slice(i, i + 100));
+        } catch {
+          // ignore Vectorize cleanup errors
+        }
+      }
+    }
     return c.json({ success: true, emptied: true });
   }
 
   if (type === 'source' && id) {
+    const { results: hlRows } = await c.env.DB.prepare(
+      `SELECT id FROM highlights WHERE source_id = ?`
+    ).bind(id).all<{ id: string }>();
+    const hlIds = hlRows.map((r) => r.id);
+
     await c.env.DB.prepare(`DELETE FROM highlights WHERE source_id = ?`).bind(id).run();
     await c.env.DB.prepare(`DELETE FROM sources WHERE id = ?`).bind(id).run();
+    if (hlIds.length > 0) {
+      const placeholders = hlIds.map(() => '?').join(',');
+      await c.env.DB.prepare(
+        `DELETE FROM embeddings WHERE target_type = 'highlight' AND id IN (${placeholders})`
+      ).bind(...hlIds).run();
+      if (c.env.VECTORIZE) {
+        try {
+          await c.env.VECTORIZE.deleteByIds(hlIds);
+        } catch {}
+      }
+    }
     return c.json({ success: true, permanentlyDeleted: id });
   }
 
   if (type === 'highlight' && id) {
     await c.env.DB.prepare(`DELETE FROM highlights WHERE id = ?`).bind(id).run();
+    await c.env.DB.prepare(
+      `DELETE FROM embeddings WHERE target_type = 'highlight' AND id = ?`
+    ).bind(id).run();
+    if (c.env.VECTORIZE) {
+      try {
+        await c.env.VECTORIZE.deleteByIds([id]);
+      } catch {}
+    }
     return c.json({ success: true, permanentlyDeleted: id });
   }
 

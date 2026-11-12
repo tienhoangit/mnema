@@ -1,4 +1,5 @@
 // X / Twitter Bookmarks Sync Content Script (x.com/i/bookmarks)
+import { buildAuthHeaders, getConfig } from './storage';
 
 (function () {
   function injectSyncButton() {
@@ -109,24 +110,9 @@
     if (textSpan) textSpan.textContent = `Đang đồng bộ ${items.length} bookmarks...`;
 
     try {
-      const config = await new Promise<{ apiUrl: string; apiToken: string }>((resolve) => {
-        chrome.storage.local.get(['mnema_api_url', 'mnema_api_token'], (items: Record<string, any>) => {
-          const rawUrl = items && typeof items.mnema_api_url === 'string' ? items.mnema_api_url : 'http://127.0.0.1:8787';
-          const rawToken = items && typeof items.mnema_api_token === 'string' ? items.mnema_api_token : '';
-          resolve({
-            apiUrl: rawUrl.replace(/\/+$/, ''),
-            apiToken: rawToken,
-          });
-        });
-      });
+      const config = await getConfig();
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (config.apiToken) {
-        headers['Authorization'] = `Bearer ${config.apiToken}`;
-        headers['X-Api-Key'] = config.apiToken;
-      }
+      const headers = buildAuthHeaders(config);
 
       const res = await fetch(`${config.apiUrl}/api/import/json`, {
         method: 'POST',

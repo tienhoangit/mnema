@@ -14,12 +14,14 @@ import toolsRouter from './routes/tools';
 import trashRouter from './routes/trash';
 import searchRouter from './routes/search';
 import emailRouter from './routes/email';
-import rssRouter from './routes/rss';
+import rssRouter, { runScheduledRssSync } from './routes/rss';
 import exportRouter from './routes/export';
 import sharesRouter, { publicShareRouter } from './routes/shares';
-import webhooksRouter from './routes/webhooks';
+import webhooksRouter, { ingestNewsletterPayload } from './routes/webhooks';
 import integrationsRouter from './routes/integrations';
 import oauthRouter from './routes/oauth';
+import apiKeysRouter from './routes/apiKeys';
+import { apiKeyMiddleware } from './middleware/apiKeyAuth';
 import { runScheduledDigest } from './services/email';
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -42,23 +44,12 @@ app.use(
   })
 );
 
-// Auto-ensure legacy prev_state column
-let schemaMigrated = false;
-app.use('*', async (c, next) => {
-  if (!schemaMigrated && c.env.DB) {
-    try {
-      await c.env.DB.prepare('ALTER TABLE reviews_log ADD COLUMN prev_state TEXT').run();
-    } catch {
-      // already exists
-    }
-    schemaMigrated = true;
-  }
-  await next();
-});
-
 // Health check
 app.get('/api', (c) => c.json({ status: 'ok', name: 'Mnema API', version: '2.0.0' }));
 app.get('/api/health', (c) => c.json({ status: 'ok', name: 'Mnema API', version: '2.0.0' }));
+
+// Public REST API Key authentication middleware for /api/*
+app.use('/api/*', apiKeyMiddleware);
 
 // Mount sub-routers under /api
 app.route('/', oauthRouter);
@@ -81,6 +72,7 @@ app.route('/api/shares', sharesRouter);
 app.route('/api/public/share', publicShareRouter);
 app.route('/api/webhooks', webhooksRouter);
 app.route('/api/integrations', integrationsRouter);
+app.route('/api/keys', apiKeysRouter);
 
 // Global fallback & 404 handler (SPA static assets or JSON error for API)
 app.notFound(async (c) => {
@@ -101,11 +93,33 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
+  async email(
+    message: { from: string; headers: Headers; raw: ReadableStream<Uint8Array> | string },
+    env: Bindings,
+    ctx: ExecutionContext
+  ): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        const raw =
+          typeof message.raw === 'string' ? message.raw : await new Response(message.raw).text();
+        await ingestNewsletterPayload(env, {
+          from: message.from,
+          subject: message.headers.get('subject') || 'Newsletter',
+          raw,
+        });
+      })()
+    );
+  },
   async scheduled(_event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      runScheduledDigest(env).then((res) => {
-        console.log('Scheduled digest check:', JSON.stringify(res));
-      })
+      Promise.allSettled([
+        runScheduledDigest(env).then((res) => {
+          console.log('Scheduled digest check:', JSON.stringify(res));
+        }),
+        runScheduledRssSync(env.DB, 4).then((res) => {
+          console.log('Scheduled RSS sync:', JSON.stringify(res));
+        }),
+      ])
     );
   },
 };

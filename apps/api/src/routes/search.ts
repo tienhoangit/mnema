@@ -234,11 +234,13 @@ app.post('/embeddings/sync', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
     apiKey?: string;
     batchLimit?: number;
+    force?: boolean;
   };
   const apiKey = body.apiKey || c.req.header('X-Gemini-Key');
   const result = await syncHighlightEmbeddings(c.env, {
     customApiKey: apiKey,
     batchLimit: body.batchLimit,
+    force: body.force,
   });
 
   return c.json({ success: true, data: result });
@@ -278,6 +280,55 @@ app.get('/similar/:highlightId', async (c) => {
 
   if (!target) {
     return c.json({ error: 'Highlight not found' }, 404);
+  }
+
+  // Fast path: query Vectorize directly by highlight ID if indexed
+  if (c.env.VECTORIZE) {
+    try {
+      const vRes = await c.env.VECTORIZE.queryById(highlightId, {
+        topK: 6,
+        returnMetadata: 'all',
+      });
+      const candidateMatches = (vRes.matches || []).filter((m) => {
+        const id = typeof m.metadata?.highlightId === 'string' ? m.metadata.highlightId : m.id;
+        return id !== highlightId;
+      });
+      if (candidateMatches.length > 0) {
+        const ids = candidateMatches.map((m) =>
+          typeof m.metadata?.highlightId === 'string' ? m.metadata.highlightId : m.id
+        );
+        const scoreById = new Map(ids.map((id, idx) => [id, candidateMatches[idx].score]));
+        const placeholders = ids.map(() => '?').join(',');
+        const { results: rows } = await c.env.DB.prepare(`
+          SELECT h.*, s.name as source_name, s.author as source_author, s.type as source_type, s.url as source_url
+          FROM highlights h
+          JOIN sources s ON s.id = h.source_id
+          WHERE h.deleted = 0 AND s.deleted = 0 AND h.id IN (${placeholders})
+        `)
+          .bind(...ids)
+          .all<HighlightWithSource>();
+
+        const similar = rows
+          .map((row) => ({
+            ...row,
+            similarity: Math.round(Math.min(1, Math.max(0, scoreById.get(row.id) ?? 0)) * 100),
+          }))
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, 4);
+
+        if (similar.length > 0) {
+          return c.json({
+            data: {
+              similar,
+              model: 'vectorize',
+              provider: 'vectorize',
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Vectorize queryById fallback:', err);
+    }
   }
 
   const queryText = `${target.content} ${target.note || ''}`.trim();

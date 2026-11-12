@@ -29,6 +29,16 @@
   "ai": {
     "binding": "AI"
   },
+  // Vectorize index for semantic highlight search.
+  // Before deploying, create the index once with dimensions matching your active embedding model:
+  //   Workers AI (@cf/baai/bge-small-en-v1.5): npx wrangler vectorize create mnema-highlights --dimensions=384 --metric=cosine
+  //   Gemini (gemini-embedding-001 truncated / text-embedding-004) or bge-base: npx wrangler vectorize create mnema-highlights --dimensions=768 --metric=cosine
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "mnema-highlights"
+    }
+  ],
   "triggers": {
     "crons": ["0 * * * *"]
   },

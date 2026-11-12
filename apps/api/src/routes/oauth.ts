@@ -548,6 +548,13 @@ app.post('/token', async (c) => {
 
     const rawCode = await getKv(c.env, `code:${code}`);
     if (!rawCode) {
+      // Idempotency grace cache for concurrent duplicate /token POSTs (e.g., ChatGPT Web)
+      const cachedTokenRes = await getKv(c.env, `code_used:${code}`);
+      if (cachedTokenRes) {
+        try {
+          return c.json(JSON.parse(cachedTokenRes));
+        } catch {}
+      }
       return c.json({ error: 'invalid_grant', error_description: 'Authorization code is invalid or expired' }, 400);
     }
 
@@ -621,13 +628,18 @@ app.post('/token', async (c) => {
       expiresIn * 3 // 90 days
     );
 
-    return c.json({
+    const responseBody = {
       access_token: accessToken,
       token_type: 'Bearer',
       expires_in: expiresIn,
       refresh_token: refreshToken,
       scope: codeData.scope || 'mcp',
-    });
+    };
+
+    // Cache token response briefly under code_used:${code} so duplicate concurrent POSTs succeed idempotently
+    await putKv(c.env, `code_used:${code}`, JSON.stringify(responseBody), 60);
+
+    return c.json(responseBody);
   }
 
   if (grantType === 'refresh_token') {
