@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="mnema-grad" x1="12" y1="88" x2="88" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1B1D72" />
+      <stop offset="45%" stop-color="#3B229B" />
+      <stop offset="80%" stop-color="#5327B6" />
+      <stop offset="100%" stop-color="#6433D7" />
+    </linearGradient>
+    <linearGradient id="mnema-fold" x1="48" y1="54" x2="84" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9A72F8" stop-opacity="0.72" />
+      <stop offset="100%" stop-color="#F5F3FF" stop-opacity="0.96" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M12 79 C12 87 21 90 27 84 L38 72 L38 56 L47 64 C49 66 51 66 53 64 L62 56 L76 85 C80 90 88 87 88 79 L88 30 C88 18 76 12 66 19 L50 31 L34 19 C24 12 12 18 12 30 Z"
+    fill="url(#mnema-grad)"
+  />
+  <path
+    d="M49 58 L77 35 C79 33 81 34 81 37 L81 74 C81 78 77 79 74 76 Z"
+    fill="url(#mnema-fold)"
+  />
+</svg>
+

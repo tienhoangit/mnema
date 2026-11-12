@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Mnema - Web Clipper & Highlighter",
+  "version": "1.0.0",
+  "description": "1-Click article saving, on-page text highlighting, and Kindle/X bookmark synchronization for Mnema.",
+  "icons": {
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Mnema Web Clipper",
+    "default_icon": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/highlighter.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://read.amazon.com/notebook*", "*://read.amazon.co.uk/notebook*"],
+      "js": ["dist/kindle-sync.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://x.com/i/bookmarks*", "*://twitter.com/i/bookmarks*"],
+      "js": ["dist/x-sync.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/Readability.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

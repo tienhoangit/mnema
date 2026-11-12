@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+}
+
+/* Reader Typography Styles */
+.reader-content p {
+  margin-bottom: 1.4em;
+  line-height: 1.8;
+}
+
+.reader-content h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.6em;
+}
+
+.reader-content h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 1.4em;
+  margin-bottom: 0.5em;
+}
+
+.reader-content h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.4em;
+}
+
+.reader-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1.5em auto;
+}
+
+.reader-content blockquote {
+  border-left: 3px solid #14b8a6;
+  padding-left: 1rem;
+  font-style: italic;
+  margin: 1.5em 0;
+  opacity: 0.9;
+}
+
+/* Custom Highlight colors in reader */
+::selection {
+  background-color: rgba(254, 240, 138, 0.6);
+}
+
+.hl-yellow {
+  background-color: rgba(254, 240, 138, 0.45);
+  border-bottom: 2px solid #eab308;
+}
+
+.hl-blue {
+  background-color: rgba(186, 230, 253, 0.45);
+  border-bottom: 2px solid #0284c7;
+}
+
+.hl-green {
+  background-color: rgba(187, 247, 208, 0.45);
+  border-bottom: 2px solid #16a34a;
+}
+
+.hl-pink {
+  background-color: rgba(251, 207, 232, 0.45);
+  border-bottom: 2px solid #db2777;
+}
+

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mnema Clipper</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #0d9488;
+      --primary-hover: #0f766e;
+      --border: #e2e8f0;
+      --card-bg: #f8fafc;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      width: 320px;
+      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--primary);
+    }
+    .brand svg { width: 18px; height: 18px; }
+    .icon-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px;
+      border-radius: 6px;
+    }
+    .icon-btn:hover { background: var(--card-bg); color: var(--text); }
+    .form-group {
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    select, input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      background: #fff;
+    }
+    select:focus, input:focus {
+      border-color: var(--primary);
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 10px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status-banner {
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      display: none;
+    }
+    .status-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .status-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .status-loading { background: #f0fdfa; color: #115e59; border: 1px solid #99f6e4; }
+    .settings-panel {
+      display: none;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .btn-secondary {
+      width: 100%;
+      padding: 8px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <img src="icons/icon128.png" alt="Mnema" style="width: 20px; height: 20px; object-fit: contain;" />
+      <span>Mnema Clipper</span>
+    </div>
+    <button class="icon-btn" id="toggle-settings" title="Settings">⚙️</button>
+  </div>
+
+  <div class="form-group">
+    <label for="reading-status">Save Destination</label>
+    <select id="reading-status">
+      <option value="inbox">Inbox</option>
+      <option value="later">Read Later</option>
+    </select>
+  </div>
+
+  <button class="btn-primary" id="save-btn">Save Article to Mnema</button>
+
+  <div id="status-msg" class="status-banner"></div>
+
+  <div id="settings-panel" class="settings-panel">
+    <div class="form-group">
+      <label for="api-url">Worker API URL</label>
+      <input type="text" id="api-url" placeholder="http://127.0.0.1:8787" />
+    </div>
+    <div class="form-group">
+      <label for="api-token">Personal API Token</label>
+      <input type="password" id="api-token" placeholder="Optional bearer/API token" />
+    </div>
+    <button class="btn-secondary" id="save-settings-btn">Save Settings</button>
+  </div>
+
+  <script src="dist/popup.js"></script>
+</body>
+</html>
