@@ -1,81 +1,13 @@
 import { Hono } from 'hono';
 import { Bindings, HighlightWithSource, SourceRow } from '../types';
-import { getSettings } from '../services/settings';
 import {
+  askLibraryAi,
   ensureEmbeddingsTable,
   semanticSearchHighlights,
   syncHighlightEmbeddings,
 } from '../services/semantic';
 
 const app = new Hono<{ Bindings: Bindings }>();
-
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>;
-    };
-  }>;
-}
-
-interface WorkersAiResponse {
-  response?: string;
-}
-
-async function resolveGeminiKey(env: Bindings, customApiKey?: string): Promise<string | undefined> {
-  if (customApiKey?.trim()) return customApiKey.trim();
-  if (env.GEMINI_API_KEY?.trim()) return env.GEMINI_API_KEY.trim();
-  try {
-    const settings = await getSettings(env.DB);
-    return settings.gemini_api_key || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function generateAIResponse(
-  prompt: string,
-  env: Bindings,
-  customApiKey?: string
-): Promise<string> {
-  const apiKey = await resolveGeminiKey(env, customApiKey);
-
-  if (apiKey) {
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-    for (const model of models) {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-          }),
-        }
-      );
-
-      if (res.ok) {
-        const data = (await res.json()) as GeminiResponse;
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text) return text;
-      } else if (res.status !== 404) {
-        break;
-      }
-    }
-  }
-
-  if (env.AI) {
-    try {
-      const aiRes = (await env.AI.run('@cf/meta/llama-3-8b-instruct', {
-        messages: [{ role: 'user', content: prompt }],
-      })) as WorkersAiResponse;
-      if (aiRes.response) return aiRes.response;
-    } catch (e) {
-      console.warn('Workers AI error:', e instanceof Error ? e.message : e);
-    }
-  }
-
-  throw new Error('Please configure a free Google Gemini API Key in Settings to use Library AI.');
-}
 
 // GET /api/search - Fulltext search across sources, highlights, and notes
 app.get('/', async (c) => {
@@ -374,43 +306,12 @@ app.post('/ask', async (c) => {
     return c.json({ error: 'Question is required' }, 400);
   }
 
-  const semantic = await semanticSearchHighlights(c.env, question, {
-    limit: 12,
-    customApiKey: apiKey,
-  });
-  const matchingHighlights = semantic.highlights;
-
-  const libraryContext = matchingHighlights
-    .map(
-      (m, i) =>
-        `[${i + 1}] "${m.content}"\nSource: ${m.source_name}${m.source_author ? ` by ${m.source_author}` : ''}${
-          m.note ? `\nUser's Personal Note: ${m.note}` : ''
-        }`
-    )
-    .join('\n\n');
-
-  const prompt = `You are Mnema Library AI, a knowledgeable personal assistant that answers questions based on the user's personal knowledge base and reading highlights.
-
-Question: "${question}"
-
-User's Library Highlights Context:
-"""
-${libraryContext || 'No directly matching quotes found in library. Use general wisdom while remaining helpful.'}
-"""
-
-Instructions:
-1. Synthesize insights directly from the user's reading highlights.
-2. When referencing ideas, cite the source name (e.g., "[Atomic Habits]").
-3. Keep the tone conversational, articulate, and inspiring.`;
-
   try {
-    const answer = await generateAIResponse(prompt, c.env, apiKey);
-    return c.json({
-      data: {
-        answer,
-        citations: matchingHighlights.slice(0, 5),
-      },
+    const data = await askLibraryAi(c.env, question, {
+      limit: 12,
+      customApiKey: apiKey,
     });
+    return c.json({ data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Library AI query failed';
     return c.json({ error: msg }, 500);

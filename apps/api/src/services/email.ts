@@ -1,5 +1,6 @@
 import { Bindings, HighlightWithSource, SourceRow } from '../types';
 import { getSettings } from './settings';
+import { sendTelegramReviewHighlights } from './telegram';
 
 function escapeHtml(str: string): string {
   return str
@@ -330,18 +331,20 @@ export async function logEmailSend(
 
 export async function runScheduledDigest(
   env: Bindings
-): Promise<{ sent: boolean; reason: string; count?: number }> {
+): Promise<{ sent: boolean; reason: string; count?: number; telegramCount?: number }> {
   const settings = await getSettings(env.DB);
   if (settings.digest_enabled !== 1) {
     return { sent: false, reason: 'Digest disabled' };
   }
-  if (!settings.digest_email) {
-    return { sent: false, reason: 'No recipient email configured' };
-  }
 
   const apiKey = settings.resend_api_key || env.RESEND_API_KEY;
-  if (!apiKey) {
-    return { sent: false, reason: 'No Resend API key configured' };
+  const canSendEmail = Boolean(settings.digest_email && apiKey);
+  const telegramToken = settings.telegram_bot_token?.trim() || '';
+  const telegramChatId = settings.telegram_allowed_chat_id?.trim() || '';
+  const canSendTelegram = Boolean(telegramToken && telegramChatId);
+
+  if (!canSendEmail && !canSendTelegram) {
+    return { sent: false, reason: 'No email or Telegram delivery channel configured' };
   }
 
   const now = new Date();
@@ -364,19 +367,48 @@ export async function runScheduledDigest(
     return { sent: false, reason: 'No highlights in library' };
   }
 
-  const rendered = buildDigestEmail(highlights);
-  const from = settings.from_email || 'Mnema Digest <onboarding@resend.dev>';
+  let emailSent = false;
+  let emailError: string | undefined;
 
-  try {
-    await sendViaResend({
-      apiKey,
-      from,
-      to: settings.digest_email,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
+  if (canSendEmail && settings.digest_email && apiKey) {
+    const rendered = buildDigestEmail(highlights);
+    const from = settings.from_email || 'Mnema Digest <onboarding@resend.dev>';
 
+    try {
+      await sendViaResend({
+        apiKey,
+        from,
+        to: settings.digest_email,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+      });
+
+      await logEmailSend(env.DB, {
+        emailType: 'digest',
+        recipient: settings.digest_email,
+        subject: rendered.subject,
+        status: 'sent',
+      });
+      emailSent = true;
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : 'Unknown error';
+      await logEmailSend(env.DB, {
+        emailType: 'digest',
+        recipient: settings.digest_email,
+        subject: rendered.subject,
+        status: 'failed',
+        errorMessage: emailError,
+      });
+    }
+  }
+
+  let telegramCount = 0;
+  if (canSendTelegram) {
+    telegramCount = await sendTelegramReviewHighlights(telegramToken, telegramChatId, highlights);
+  }
+
+  if (emailSent || telegramCount > 0) {
     const sentAt = now.toISOString();
     await env.DB.prepare(
       `UPDATE user_settings SET last_digest_sent_date = ?, last_digest_sent_at = ?, updated_at = ? WHERE id = 'default'`
@@ -384,23 +416,13 @@ export async function runScheduledDigest(
       .bind(todayUtc, sentAt, sentAt)
       .run();
 
-    await logEmailSend(env.DB, {
-      emailType: 'digest',
-      recipient: settings.digest_email,
-      subject: rendered.subject,
-      status: 'sent',
-    });
-
-    return { sent: true, reason: 'Sent successfully', count: highlights.length };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    await logEmailSend(env.DB, {
-      emailType: 'digest',
-      recipient: settings.digest_email,
-      subject: rendered.subject,
-      status: 'failed',
-      errorMessage: message,
-    });
-    return { sent: false, reason: message };
+    return {
+      sent: true,
+      reason: 'Sent successfully',
+      count: highlights.length,
+      telegramCount,
+    };
   }
+
+  return { sent: false, reason: emailError || 'Delivery failed' };
 }
