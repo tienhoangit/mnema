@@ -39,6 +39,12 @@
       "index_name": "mnema-highlights"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "EPUB_BUCKET",
+      "bucket_name": "mnema-epubs"
+    }
+  ],
   "triggers": {
     "crons": ["0 * * * *"]
   },

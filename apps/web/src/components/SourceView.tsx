@@ -185,7 +185,9 @@ export const SourceView: React.FC<SourceViewProps> = ({
     setEditingNoteId(null);
   };
 
-  const canReadArticle = Boolean(source.content_html && source.content_html.trim().length > 0);
+  const canReadArticle = Boolean(
+    source.type === 'epub' || (source.content_html && source.content_html.trim().length > 0)
+  );
 
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] bg-[#faf9f5] dark:bg-[#121214] overflow-y-auto">

@@ -7,6 +7,7 @@ export interface Bindings {
   ASSETS?: Fetcher;
   AI?: WorkersAiBinding;
   VECTORIZE?: Vectorize;
+  EPUB_BUCKET?: R2Bucket;
   GEMINI_API_KEY?: string;
   RESEND_API_KEY?: string;
   OAUTH_KV?: KVNamespace;
@@ -58,6 +59,12 @@ export interface HighlightRow {
   ease_factor: number;
   interval_days: number;
   next_review_at: string | null;
+  fsrs_state?: number | null;
+  fsrs_stability?: number | null;
+  fsrs_difficulty?: number | null;
+  fsrs_reps?: number | null;
+  fsrs_lapses?: number | null;
+  fsrs_last_review?: string | null;
   deleted: number;
   created_at: string;
   updated_at: string;

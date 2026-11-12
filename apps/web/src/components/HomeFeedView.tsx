@@ -58,7 +58,22 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   const [filterWithNotes, setFilterWithNotes] = useState(false);
   const [filterType, setFilterType] = useState<string>('all');
   const [selectedTag, setSelectedTag] = useState<string>('all');
-  const [isChecklistDismissed, setIsChecklistDismissed] = useState(false);
+  const [isChecklistDismissed, setIsChecklistDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mnema_onboarding_dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleDismissChecklist = () => {
+    setIsChecklistDismissed(true);
+    try {
+      localStorage.setItem('mnema_onboarding_dismissed', '1');
+    } catch {
+      // ignore storage errors
+    }
+  };
 
   // Filter & sort logic
   const filteredHighlights = highlights
@@ -88,6 +103,37 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
       highlights.flatMap((h) => (h.tags ? h.tags.map((t) => t.name) : []))
     )
   );
+
+  const onboardingSteps = [
+    {
+      id: 'import',
+      label: 'Connect Kindle or import books',
+      done: sources.some((s) => s.type === 'book' || s.type === 'pdf' || s.type === 'epub'),
+      onClick: () => onSelectTab('integrations'),
+    },
+    {
+      id: 'highlight',
+      label: 'Add your first highlight or source',
+      done: highlights.length > 0 || sources.length > 0,
+      onClick: onOpenCreateNew,
+    },
+    {
+      id: 'review',
+      label: 'Do your daily review session',
+      done:
+        (streakStats?.totalReviewsLogged || 0) > 0 ||
+        highlights.some((h) => (h.review_count || 0) > 0),
+      onClick: onStartReview,
+    },
+    {
+      id: 'organize',
+      label: 'Tag a highlight or explore essays',
+      done: allTags.length > 0 || sources.some((s) => s.type === 'article'),
+      onClick: () => onSelectTab('explore'),
+    },
+  ];
+  const completedSteps = onboardingSteps.filter((s) => s.done).length;
+  const showOnboarding = !isChecklistDismissed && completedSteps < onboardingSteps.length;
 
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-y-auto">
@@ -163,10 +209,10 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
         {/* Left Column: Feed Stream */}
         <div className="flex-1 w-full max-w-3xl space-y-6">
           {/* Onboarding Checklist Box */}
-          {!isChecklistDismissed && (
+          {showOnboarding && (
             <div className="rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-xs relative">
               <button
-                onClick={() => setIsChecklistDismissed(true)}
+                onClick={handleDismissChecklist}
                 className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
                 title="Dismiss checklist"
               >
@@ -177,42 +223,26 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
                   Get started with Mnema
                 </h3>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 font-medium">
-                  {highlights.length > 0 ? '1 of 4 completed' : '0 of 4 completed'}
+                  {completedSteps} of {onboardingSteps.length} completed
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-neutral-600 dark:text-neutral-300">
-                <div
-                  onClick={() => onSelectTab('integrations')}
-                  className="flex items-center gap-2 p-2 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 cursor-pointer transition-colors"
-                >
-                  <Circle className="w-4 h-4 text-neutral-400 shrink-0" />
-                  <span>Connect Kindle or import clippings</span>
-                </div>
-                <div
-                  onClick={onOpenCreateNew}
-                  className="flex items-center gap-2 p-2 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 cursor-pointer transition-colors"
-                >
-                  {highlights.length > 0 ? (
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
-                  ) : (
-                    <Circle className="w-4 h-4 text-neutral-400 shrink-0" />
-                  )}
-                  <span>Add your first highlight or book</span>
-                </div>
-                <div
-                  onClick={onStartReview}
-                  className="flex items-center gap-2 p-2 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 cursor-pointer transition-colors"
-                >
-                  <Circle className="w-4 h-4 text-neutral-400 shrink-0" />
-                  <span>Do your daily review session</span>
-                </div>
-                <div
-                  onClick={() => onSelectTab('explore')}
-                  className="flex items-center gap-2 p-2 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 cursor-pointer transition-colors"
-                >
-                  <Circle className="w-4 h-4 text-neutral-400 shrink-0" />
-                  <span>Explore classic essays & books</span>
-                </div>
+                {onboardingSteps.map((step) => (
+                  <div
+                    key={step.id}
+                    onClick={step.onClick}
+                    className="flex items-center gap-2 p-2 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+                  >
+                    {step.done ? (
+                      <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-neutral-400 shrink-0" />
+                    )}
+                    <span className={step.done ? 'line-through text-neutral-400' : ''}>
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

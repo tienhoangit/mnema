@@ -193,7 +193,9 @@ app.post('/undo', async (c) => {
       const prev = JSON.parse(lastLog.prev_state);
       await c.env.DB.prepare(`
         UPDATE highlights
-        SET review_count = ?, ease_factor = ?, interval_days = ?, next_review_at = ?, is_in_review_queue = ?, updated_at = ?
+        SET review_count = ?, ease_factor = ?, interval_days = ?, next_review_at = ?, is_in_review_queue = ?,
+            fsrs_state = ?, fsrs_stability = ?, fsrs_difficulty = ?, fsrs_reps = ?, fsrs_lapses = ?, fsrs_last_review = ?,
+            updated_at = ?
         WHERE id = ?
       `).bind(
         prev.reviewCount,
@@ -201,6 +203,12 @@ app.post('/undo', async (c) => {
         prev.intervalDays,
         prev.nextReviewAt,
         prev.isInReviewQueue ? 1 : 0,
+        prev.fsrsState ?? null,
+        prev.fsrsStability ?? null,
+        prev.fsrsDifficulty ?? null,
+        prev.fsrsReps ?? null,
+        prev.fsrsLapses ?? null,
+        prev.fsrsLastReview ?? null,
         new Date().toISOString(),
         highlightId
       ).run();

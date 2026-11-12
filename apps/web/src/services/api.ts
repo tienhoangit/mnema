@@ -2,6 +2,7 @@ import {
   Source,
   Highlight,
   ReadingStatus,
+  ReviewAction,
   StreakStats,
   Tag,
   SourceType,
@@ -228,7 +229,7 @@ export const api = {
     return json.data;
   },
 
-  async submitReviewAction(id: string, action: 'remember' | 'forget' | 'discard'): Promise<unknown> {
+  async submitReviewAction(id: string, action: ReviewAction): Promise<unknown> {
     const res = await fetch(`${API_BASE}/reviews/${id}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -321,41 +322,69 @@ export const api = {
   },
 
   async importPdfFile(params: {
-    file?: File;
     title?: string;
     author?: string;
+    content_html?: string;
+    pages?: string[];
+    page_count?: number;
     text?: string;
+    file_hash?: string;
+    highlights?: Array<{
+      content: string;
+      note?: string;
+      location?: string;
+      color?: string;
+    }>;
     reading_status?: ReadingStatus;
-  }): Promise<Source> {
-    let res: Response;
-    if (params.file) {
-      const formData = new FormData();
-      formData.append('file', params.file);
-      if (params.title) formData.append('title', params.title);
-      if (params.author) formData.append('author', params.author);
-      if (params.reading_status) formData.append('reading_status', params.reading_status);
-      if (params.text) formData.append('text', params.text);
-      res = await fetch(`${API_BASE}/import/pdf`, {
-        method: 'POST',
-        body: formData,
-      });
-    } else {
-      res = await fetch(`${API_BASE}/import/pdf`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: params.title,
-          author: params.author,
-          text: params.text,
-          reading_status: params.reading_status,
-        }),
-      });
-    }
+  }): Promise<{ source: Source; highlightsImported: number }> {
+    const res = await fetch(`${API_BASE}/import/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
     if (!res.ok) {
       throw new Error(await parseErrorMessage(res, 'PDF import failed'));
     }
-    const json = (await res.json()) as { data: Source };
-    return json.data;
+    const json = (await res.json()) as { data: Source; highlightsImported?: number };
+    return {
+      source: json.data,
+      highlightsImported: json.highlightsImported ?? 0,
+    };
+  },
+
+  async uploadEpub(
+    file: File,
+    options?: { title?: string; author?: string; reading_status?: ReadingStatus }
+  ): Promise<{ source: Source; deduplicated: boolean }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options?.title) formData.append('title', options.title);
+    if (options?.author) formData.append('author', options.author);
+    if (options?.reading_status) formData.append('reading_status', options.reading_status);
+
+    try {
+      const buf = await file.arrayBuffer();
+      const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+      const hashHex = Array.from(new Uint8Array(hashBuf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      formData.append('file_hash', hashHex);
+    } catch {
+      // fallback to server-side hashing
+    }
+
+    const res = await fetch(`${API_BASE}/sources/epub`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, 'EPUB upload failed'));
+    }
+    const json = (await res.json()) as { data: Source; deduplicated?: boolean };
+    return {
+      source: json.data,
+      deduplicated: Boolean(json.deduplicated),
+    };
   },
 
   // Book Search (OpenLibrary)

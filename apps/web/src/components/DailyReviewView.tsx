@@ -19,9 +19,11 @@ import {
   BookOpen,
   Tag as TagIcon,
   Check,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Highlight, StreakStats, Source, Tag } from '../types';
+import { Highlight, ReviewAction, StreakStats, Source, Tag } from '../types';
 import { ActivityHeatmap } from './ActivityHeatmap';
 import { api } from '../services/api';
 
@@ -30,7 +32,7 @@ interface DailyReviewViewProps {
   streakStats?: StreakStats;
   sources?: Source[];
   tags?: Tag[];
-  onAction: (id: string, action: 'remember' | 'forget' | 'discard') => Promise<void>;
+  onAction: (id: string, action: ReviewAction) => Promise<void>;
   onUndo?: () => Promise<void>;
   onToggleFavorite?: (hl: Highlight) => void;
   onClose: () => void;
@@ -57,6 +59,27 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
   const [similarHighlights, setSimilarHighlights] = useState<Highlight[]>([]);
   const [isLoadingSimilar, setIsLoadingSimilar] = useState(false);
   const [isUndoLoading, setIsUndoLoading] = useState(false);
+  const [clozeMode, setClozeMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mnema_cloze_mode') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [isRevealed, setIsRevealed] = useState(false);
+
+  const toggleClozeMode = () => {
+    setClozeMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('mnema_cloze_mode', next ? '1' : '0');
+      } catch {
+        // ignore storage error
+      }
+      return next;
+    });
+    setIsRevealed(false);
+  };
 
   // Custom Review Form State
   const [customTopic, setCustomTopic] = useState('');
@@ -110,7 +133,24 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
       const current = activeQueue[currentIndex];
       if (!current) return;
 
-      if (e.key === 'ArrowRight') {
+      if (e.key === ' ') {
+        if (clozeMode && !isRevealed) {
+          e.preventDefault();
+          setIsRevealed(true);
+        }
+      } else if (e.key === '1') {
+        e.preventDefault();
+        handleAction('again');
+      } else if (e.key === '2') {
+        e.preventDefault();
+        handleAction('hard');
+      } else if (e.key === '3') {
+        e.preventDefault();
+        handleAction('good');
+      } else if (e.key === '4') {
+        e.preventDefault();
+        handleAction('easy');
+      } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         handleNext();
       } else if (e.key === 'ArrowLeft') {
@@ -118,10 +158,10 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
         handlePrev();
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        handleAction('remember');
+        handleAction('good');
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        handleAction('forget');
+        handleAction('again');
       } else if (e.key === 'd' || e.key === 'D') {
         e.preventDefault();
         handleAction('discard');
@@ -136,7 +176,7 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, isCompleted, activeQueue, activeTab, onToggleFavorite]);
+  }, [currentIndex, isCompleted, activeQueue, activeTab, onToggleFavorite, clozeMode, isRevealed]);
 
   const handleToggleSimilar = async () => {
     const nextShow = !showSimilar;
@@ -160,6 +200,7 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
       setCurrentIndex((prev) => prev + 1);
       setShowSimilar(false);
       setSimilarHighlights([]);
+      setIsRevealed(false);
     } else {
       setIsCompleted(true);
     }
@@ -170,16 +211,52 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
       setCurrentIndex((prev) => prev - 1);
       setShowSimilar(false);
       setSimilarHighlights([]);
+      setIsRevealed(false);
     }
   };
 
-  const handleAction = async (action: 'remember' | 'forget' | 'discard') => {
+  const handleAction = async (action: ReviewAction) => {
     const current = activeQueue[currentIndex];
     if (!current) return;
 
     await onAction(current.id, action);
     setReviewedCount((prev) => prev + 1);
     handleNext();
+  };
+
+  const renderClozeQuote = (text: string) => {
+    if (!clozeMode || isRevealed) {
+      return <>“{text}”</>;
+    }
+    const tokens = text.split(/(\s+)/);
+    let longWordIdx = 0;
+    return (
+      <>
+        “
+        {tokens.map((tok, i) => {
+          const clean = tok.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+          if (clean.length >= 6) {
+            const shouldMask = longWordIdx % 3 === 1;
+            longWordIdx += 1;
+            if (shouldMask) {
+              const leading = tok.slice(0, tok.indexOf(clean));
+              const trailing = tok.slice(tok.indexOf(clean) + clean.length);
+              return (
+                <React.Fragment key={i}>
+                  {leading}
+                  <span className="inline-block px-1.5 py-0.5 mx-0.5 rounded-md bg-teal-100/80 dark:bg-teal-900/50 text-teal-800 dark:text-teal-300 font-sans text-sm font-semibold align-baseline">
+                    [...]
+                  </span>
+                  {trailing}
+                </React.Fragment>
+              );
+            }
+          }
+          return <React.Fragment key={i}>{tok}</React.Fragment>;
+        })}
+        ”
+      </>
+    );
   };
 
   const handleUndo = async () => {
@@ -340,12 +417,26 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
           </button>
         </div>
 
-        {/* Progress Tracker / Exit */}
+        {/* Progress Tracker / Cloze Toggle / Exit */}
         <div className="flex items-center gap-3">
           {activeTab === 'daily' && activeQueue.length > 0 && !isCompleted && (
-            <span className="text-xs font-medium text-neutral-500">
-              {currentIndex + 1} of {activeQueue.length}
-            </span>
+            <>
+              <button
+                onClick={toggleClozeMode}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
+                  clozeMode
+                    ? 'bg-teal-800 text-white border-teal-800'
+                    : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                }`}
+                title="Toggle Cloze / Active Recall mode"
+              >
+                {clozeMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>Cloze {clozeMode ? 'On' : 'Off'}</span>
+              </button>
+              <span className="text-xs font-medium text-neutral-500">
+                {currentIndex + 1} of {activeQueue.length}
+              </span>
+            </>
           )}
           <button
             onClick={onClose}
@@ -496,9 +587,21 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
                     </div>
 
                     {/* Quote Body */}
-                    <blockquote className="text-lg sm:text-xl leading-relaxed text-neutral-800 dark:text-neutral-100 font-serif italic my-auto">
-                      “{currentHighlight.content}”
-                    </blockquote>
+                    <div
+                      onClick={() => {
+                        if (clozeMode && !isRevealed) setIsRevealed(true);
+                      }}
+                      className={`my-auto ${clozeMode && !isRevealed ? 'cursor-pointer' : ''}`}
+                    >
+                      <blockquote className="text-lg sm:text-xl leading-relaxed text-neutral-800 dark:text-neutral-100 font-serif italic">
+                        {renderClozeQuote(currentHighlight.content)}
+                      </blockquote>
+                      {clozeMode && !isRevealed && (
+                        <p className="mt-3 text-[11px] font-sans font-medium text-teal-700 dark:text-teal-400">
+                          Active Recall: Tap card or press Space to reveal full highlight
+                        </p>
+                      )}
+                    </div>
 
                     {/* Note if present */}
                     {currentHighlight.note && (
@@ -565,33 +668,49 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
                   )}
                 </div>
 
-                {/* Center Actions (Show Less / Show More / Discard) */}
-                <div className="flex items-center gap-2 sm:gap-3">
+                {/* Center FSRS Actions (Again / Hard / Good / Easy / Discard) */}
+                <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
                   <button
-                    onClick={() => handleAction('forget')}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-semibold text-neutral-700 dark:text-neutral-200 transition-colors shadow-2xs"
-                    title="Show less often in review (↓)"
+                    onClick={() => handleAction('again')}
+                    className="flex items-center gap-1 px-3 py-2 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/70 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/40 text-xs font-semibold text-red-700 dark:text-red-300 transition-colors"
+                    title="Again — forgot (1 or ↓)"
                   >
-                    <TrendingDown className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Show Less (↓)</span>
+                    <TrendingDown className="w-3.5 h-3.5" />
+                    <span>Again (1)</span>
                   </button>
 
                   <button
-                    onClick={() => handleAction('remember')}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold transition-colors shadow-xs"
-                    title="Show more often in review (↑)"
+                    onClick={() => handleAction('hard')}
+                    className="px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs font-semibold text-amber-800 dark:text-amber-300 transition-colors"
+                    title="Hard — recalled with effort (2)"
+                  >
+                    Hard (2)
+                  </button>
+
+                  <button
+                    onClick={() => handleAction('good')}
+                    className="flex items-center gap-1 px-3.5 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold transition-colors shadow-xs"
+                    title="Good — recalled (3 or ↑)"
                   >
                     <TrendingUp className="w-3.5 h-3.5 text-teal-300" />
-                    <span>Show More (↑)</span>
+                    <span>Good (3)</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleAction('easy')}
+                    className="px-3 py-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-semibold text-emerald-800 dark:text-emerald-300 transition-colors"
+                    title="Easy — effortless recall (4)"
+                  >
+                    Easy (4)
                   </button>
 
                   <button
                     onClick={() => handleAction('discard')}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-400 hover:text-red-600 transition-colors"
+                    className="flex items-center gap-1 px-2.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-400 hover:text-red-600 transition-colors"
                     title="Discard from review queue (D)"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Discard (D)</span>
+                    <span className="hidden sm:inline">Discard (D)</span>
                   </button>
                 </div>
 

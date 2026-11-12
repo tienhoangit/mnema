@@ -14,7 +14,8 @@
     "@cloudflare/workers-oauth-provider": "^1.2.4",
     "@mozilla/readability": "^0.6.0",
     "hono": "^4.7.4",
-    "linkedom": "^0.18.9"
+    "linkedom": "^0.18.9",
+    "ts-fsrs": "^6.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250224.0",

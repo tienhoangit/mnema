@@ -10,6 +10,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { api, ImportSummary } from '../services/api';
+import { extractPdfInBrowser } from '../services/pdfExtractor';
 
 interface KindleImportModalProps {
   isOpen: boolean;
@@ -18,7 +19,7 @@ interface KindleImportModalProps {
   importKindleFn: (text: string) => Promise<{ data: ImportSummary }>;
 }
 
-type ImportTab = 'kindle' | 'readwise' | 'books_csv' | 'pdf';
+type ImportTab = 'kindle' | 'readwise' | 'books_csv' | 'pdf' | 'epub';
 
 export const KindleImportModal: React.FC<KindleImportModalProps> = ({
   isOpen,
@@ -36,6 +37,11 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
   const [pdfTitle, setPdfTitle] = useState('');
   const [pdfAuthor, setPdfAuthor] = useState('');
   const [pdfFallbackText, setPdfFallbackText] = useState('');
+
+  // EPUB State
+  const [epubFile, setEpubFile] = useState<File | null>(null);
+  const [epubTitle, setEpubTitle] = useState('');
+  const [epubAuthor, setEpubAuthor] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -66,6 +72,15 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
     }
   };
 
+  const handleEpubSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEpubFile(file);
+    if (!epubTitle.trim()) {
+      setEpubTitle(file.name.replace(/\.epub$/i, ''));
+    }
+  };
+
   const handleImport = async () => {
     setLoading(true);
     setError(null);
@@ -88,14 +103,43 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
           `Imported (${res.data.detectedFormat || csvFormat}): ${res.data.booksProcessed} books (${res.data.booksCreated} new) and ${res.data.highlightsImported} highlights/reviews.`
         );
       } else if (activeTab === 'pdf') {
-        const src = await api.importPdfFile({
-          file: pdfFile || undefined,
-          title: pdfTitle.trim() || undefined,
-          author: pdfAuthor.trim() || undefined,
-          text: pdfFallbackText.trim() || undefined,
-          reading_status: 'inbox',
+        if (pdfFile && !pdfFallbackText.trim()) {
+          const extracted = await extractPdfInBrowser(pdfFile);
+          const { source: src, highlightsImported } = await api.importPdfFile({
+            title: pdfTitle.trim() || extracted.title,
+            author: pdfAuthor.trim() || extracted.author,
+            content_html: extracted.content_html,
+            pages: extracted.pages,
+            page_count: extracted.page_count,
+            file_hash: extracted.file_hash,
+            highlights: extracted.highlights,
+            reading_status: 'inbox',
+          });
+          const hlMsg =
+            highlightsImported > 0 ? ` + ${highlightsImported} PDF annotations` : '';
+          setResult(
+            `Imported PDF "${src.name}" (${src.word_count} words${hlMsg}) into Articles → Inbox!`
+          );
+        } else {
+          const { source: src } = await api.importPdfFile({
+            title: pdfTitle.trim() || undefined,
+            author: pdfAuthor.trim() || undefined,
+            text: pdfFallbackText.trim() || undefined,
+            reading_status: 'inbox',
+          });
+          setResult(`Imported PDF "${src.name}" (${src.word_count} words) into Articles → Inbox!`);
+        }
+      } else if (activeTab === 'epub' && epubFile) {
+        const { source: src, deduplicated } = await api.uploadEpub(epubFile, {
+          title: epubTitle.trim() || undefined,
+          author: epubAuthor.trim() || undefined,
+          reading_status: 'reading',
         });
-        setResult(`Imported PDF "${src.name}" (${src.word_count} words) into Articles → Inbox!`);
+        setResult(
+          deduplicated
+            ? `EPUB "${src.name}" is already in your library.`
+            : `Uploaded EPUB "${src.name}" to R2! Open it in Reader to read & highlight.`
+        );
       }
       onSuccess();
     } catch (err) {
@@ -108,7 +152,8 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
   const canSubmit =
     (activeTab === 'kindle' && Boolean(clippingsText.trim())) ||
     ((activeTab === 'readwise' || activeTab === 'books_csv') && Boolean(csvText.trim())) ||
-    (activeTab === 'pdf' && Boolean(pdfFile || pdfFallbackText.trim()));
+    (activeTab === 'pdf' && Boolean(pdfFile || pdfFallbackText.trim())) ||
+    (activeTab === 'epub' && Boolean(epubFile));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
@@ -133,6 +178,7 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
             { id: 'readwise' as const, label: 'Readwise CSV', icon: FileSpreadsheet },
             { id: 'books_csv' as const, label: 'Apple / Kobo / Goodreads', icon: FileSpreadsheet },
             { id: 'pdf' as const, label: 'PDF Upload', icon: FileText },
+            { id: 'epub' as const, label: 'EPUB Upload', icon: Book },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -293,6 +339,47 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
                   value={pdfFallbackText}
                   onChange={(e) => setPdfFallbackText(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800"
+                />
+              </div>
+            </>
+          )}
+
+          {activeTab === 'epub' && (
+            <>
+              <div className="p-3 rounded-xl bg-teal-50 dark:bg-teal-950/30 border border-teal-200/50 dark:border-teal-800/40 text-xs text-teal-900 dark:text-teal-200 space-y-1">
+                <p className="font-semibold">EPUB Reader & Highlighting (Cloudflare R2)</p>
+                <p>
+                  Upload a DRM-free .epub book to store it in Cloudflare R2 and read with full CFI highlighting & progress sync.
+                </p>
+              </div>
+
+              <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl cursor-pointer hover:border-teal-700 bg-neutral-50/50 dark:bg-neutral-800/50">
+                <Book className="w-5 h-5 text-teal-700 mb-1" />
+                <span className="text-xs font-medium">
+                  {epubFile ? epubFile.name : 'Click to select EPUB file (.epub)'}
+                </span>
+                <input
+                  type="file"
+                  accept=".epub,application/epub+zip"
+                  onChange={handleEpubSelect}
+                  className="hidden"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Book Title"
+                  value={epubTitle}
+                  onChange={(e) => setEpubTitle(e.target.value)}
+                  className="px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800"
+                />
+                <input
+                  type="text"
+                  placeholder="Author (optional)"
+                  value={epubAuthor}
+                  onChange={(e) => setEpubAuthor(e.target.value)}
+                  className="px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800"
                 />
               </div>
             </>

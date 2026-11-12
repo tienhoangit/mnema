@@ -101,6 +101,7 @@ const MainApp: React.FC = () => {
   if (selectedSourceId && activeSource) {
     const isReadableArticle =
       activeSource.type === 'youtube' ||
+      activeSource.type === 'epub' ||
       ((activeSource.type === 'article' || activeSource.type === 'pdf') &&
         Boolean(activeSource.content_html && activeSource.content_html.trim().length > 0));
 

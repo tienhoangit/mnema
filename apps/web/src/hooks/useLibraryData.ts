@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import { Source, Highlight } from '../types';
+import { Source, Highlight, ReviewAction } from '../types';
 
 interface UseLibraryDataProps {
   currentTab: string;
@@ -134,7 +134,7 @@ export function useLibraryData({ currentTab, searchQuery, selectedSourceId }: Us
   });
 
   const reviewActionMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'remember' | 'forget' | 'discard' }) =>
+    mutationFn: ({ id, action }: { id: string; action: ReviewAction }) =>
       api.submitReviewAction(id, action),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['review-queue'] });

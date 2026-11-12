@@ -463,6 +463,13 @@ async function handleTelegramCallbackQuery(
     reviewCount: highlight.review_count || 0,
     easeFactor: highlight.ease_factor || 2.5,
     intervalDays: highlight.interval_days || 0,
+    nextReviewAt: highlight.next_review_at || null,
+    fsrsState: highlight.fsrs_state ?? null,
+    fsrsStability: highlight.fsrs_stability ?? null,
+    fsrsDifficulty: highlight.fsrs_difficulty ?? null,
+    fsrsReps: highlight.fsrs_reps ?? null,
+    fsrsLapses: highlight.fsrs_lapses ?? null,
+    fsrsLastReview: highlight.fsrs_last_review ?? null,
   };
 
   const nextState = calculateSM2ByQuality(currentState, quality);
@@ -470,7 +477,9 @@ async function handleTelegramCallbackQuery(
 
   await env.DB.prepare(
     `UPDATE highlights
-     SET review_count = ?, ease_factor = ?, interval_days = ?, next_review_at = ?, is_in_review_queue = ?, updated_at = ?
+     SET review_count = ?, ease_factor = ?, interval_days = ?, next_review_at = ?, is_in_review_queue = ?,
+         fsrs_state = ?, fsrs_stability = ?, fsrs_difficulty = ?, fsrs_reps = ?, fsrs_lapses = ?, fsrs_last_review = ?,
+         updated_at = ?
      WHERE id = ?`
   )
     .bind(
@@ -479,6 +488,12 @@ async function handleTelegramCallbackQuery(
       nextState.intervalDays,
       nextState.nextReviewAt,
       nextState.isInReviewQueue ? 1 : 0,
+      nextState.fsrsState,
+      nextState.fsrsStability,
+      nextState.fsrsDifficulty,
+      nextState.fsrsReps,
+      nextState.fsrsLapses,
+      nextState.fsrsLastReview,
       now,
       highlightId
     )

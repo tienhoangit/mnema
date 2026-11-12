@@ -1,6 +1,7 @@
 export type ReadingStatus = 'inbox' | 'later' | 'archive' | 'want_to_read' | 'reading' | 'read';
-export type SourceType = 'article' | 'book' | 'youtube' | 'tweet' | 'pdf' | 'podcast' | 'custom';
+export type SourceType = 'article' | 'book' | 'youtube' | 'tweet' | 'pdf' | 'epub' | 'podcast' | 'custom';
 export type HighlightColor = 'yellow' | 'blue' | 'green' | 'pink';
+export type ReviewAction = 'remember' | 'forget' | 'discard' | 'again' | 'hard' | 'good' | 'easy';
 
 export type ReaderPreset = 'paperback' | 'editorial' | 'modern' | 'focus';
 

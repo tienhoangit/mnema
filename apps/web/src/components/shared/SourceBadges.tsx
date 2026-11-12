@@ -64,6 +64,7 @@ export const SOURCE_TYPE_CONFIG: Record<
   youtube: { label: 'YouTube', icon: Youtube, color: 'text-red-500' },
   podcast: { label: 'Podcast', icon: Radio, color: 'text-purple-600' },
   pdf: { label: 'PDF', icon: FileCode, color: 'text-rose-600' },
+  epub: { label: 'EPUB', icon: BookOpen, color: 'text-indigo-600' },
   tweet: { label: 'Post', icon: FileText, color: 'text-blue-500' },
   custom: { label: 'Custom', icon: FileText, color: 'text-neutral-500' },
 };

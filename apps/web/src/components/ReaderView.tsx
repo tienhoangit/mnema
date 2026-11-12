@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   Type,
@@ -29,6 +29,10 @@ import {
 } from 'lucide-react';
 import { AiCopilotModal } from './AiCopilotModal';
 import { TocPanel } from './TocPanel';
+
+const LazyEpubReaderPane = lazy(() =>
+  import('./EpubReaderPane').then((m) => ({ default: m.EpubReaderPane }))
+);
 import { Source, Highlight, HighlightColor, ReaderSettings, ReadingStatus, TranscriptSegment, ReaderPreset } from '../types';
 import { READER_PRESETS } from '../hooks/useReaderSettings';
 import { saveArticleOffline, getArticleOffline, savePendingHighlight, getPendingHighlights, PendingHighlight } from '../services/offlineDb';
@@ -941,7 +945,29 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                 <span>Offline Mode: Displaying saved copy from local IndexedDB cache.</span>
               </div>
             )}
-            {source.content_html || offlineFallbackHtml ? (
+            {source.type === 'epub' ? (
+              <Suspense
+                fallback={
+                  <div className="py-12 flex items-center justify-center gap-2 text-xs text-neutral-500 font-sans">
+                    <Loader2 className="w-4 h-4 animate-spin text-teal-700" />
+                    <span>Loading EPUB reader...</span>
+                  </div>
+                }
+              >
+                <LazyEpubReaderPane
+                  sourceId={source.id}
+                  initialProgress={source.progress || 0}
+                  settings={settings}
+                  highlights={source.highlights || []}
+                  onCreateHighlight={async (data) => {
+                    await onCreateHighlight(data);
+                  }}
+                  onUpdateProgress={(progress) => {
+                    void api.updateSource(source.id, { progress });
+                  }}
+                />
+              </Suspense>
+            ) : source.content_html || offlineFallbackHtml ? (
               <div
                 ref={contentRef}
                 className="reader-content leading-relaxed"
