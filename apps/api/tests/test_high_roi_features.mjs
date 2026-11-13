@@ -4,7 +4,8 @@ import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import esbuild from 'esbuild';
 
-const API_DIR = path.resolve(import.meta.dirname);
+const TESTS_DIR = path.resolve(import.meta.dirname);
+const API_DIR = path.resolve(TESTS_DIR, '..');
 const MIGRATIONS_DIR = path.join(API_DIR, 'migrations');
 const BUNDLE_OUT = path.join(API_DIR, '.tmp-high-roi-test.mjs');
 

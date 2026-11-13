@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Download, FileText, Code, Table, Check, FolderArchive } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Download, FileText, Code, Table, Check, FolderArchive, Loader2 } from 'lucide-react';
 import { Highlight, Source } from '../types';
 import { api } from '../services/api';
 
@@ -13,18 +13,44 @@ interface ExportModalProps {
 export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
-  highlights,
+  highlights: initialHighlights,
   sources,
 }) => {
   const [format, setFormat] = useState<'markdown' | 'csv' | 'html' | 'obsidian'>('markdown');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const [allExportHighlights, setAllExportHighlights] = useState<Highlight[]>(initialHighlights);
+  const [isLoadingFull, setIsLoadingFull] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    setIsLoadingFull(true);
+    setAllExportHighlights(initialHighlights);
+    api
+      .getAllHighlights()
+      .then((data) => {
+        if (active && Array.isArray(data)) {
+          setAllExportHighlights(data);
+        }
+      })
+      .catch(() => {
+        if (active) setAllExportHighlights(initialHighlights);
+      })
+      .finally(() => {
+        if (active) setIsLoadingFull(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
+  const currentHighlights = allExportHighlights;
   const filteredHighlights = favoritesOnly
-    ? highlights.filter((h) => h.favorite)
-    : highlights;
+    ? currentHighlights.filter((h) => h.favorite)
+    : currentHighlights;
 
   const handleExport = () => {
     if (format === 'obsidian') {
@@ -226,13 +252,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 onChange={(e) => setFavoritesOnly(e.target.checked)}
                 className="rounded border-neutral-300 text-teal-700 focus:ring-teal-700"
               />
-              <span>Export only Starred / Favorite highlights ({highlights.filter(h => h.favorite).length})</span>
+              <span>Export only Starred / Favorite highlights ({currentHighlights.filter(h => h.favorite).length})</span>
             </label>
           </div>
 
           <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 text-xs text-neutral-500 space-y-1">
-            <p>
-              Exporting <span className="font-bold text-neutral-800 dark:text-neutral-200">{filteredHighlights.length}</span> highlights from <span className="font-bold text-neutral-800 dark:text-neutral-200">{sources.length}</span> sources.
+            <p className="flex items-center gap-1.5">
+              <span>Exporting <span className="font-bold text-neutral-800 dark:text-neutral-200">{filteredHighlights.length}</span> highlights from <span className="font-bold text-neutral-800 dark:text-neutral-200">{sources.length}</span> sources.</span>
+              {isLoadingFull && <Loader2 className="w-3 h-3 animate-spin text-teal-700 ml-1 inline" />}
             </p>
           </div>
 

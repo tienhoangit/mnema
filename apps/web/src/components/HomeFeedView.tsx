@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Flame,
   Compass,
@@ -75,13 +75,16 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
     }
   };
 
-  // Filter & sort logic
-  const filteredHighlights = highlights
-    .filter((hl) => {
+  // Memoize sources Map for O(1) lookups
+  const sourcesMap = useMemo(() => new Map(sources.map((s) => [s.id, s])), [sources]);
+
+  // Filter & sort logic memoized with stable Fisher-Yates shuffle
+  const filteredHighlights = useMemo(() => {
+    const list = highlights.filter((hl) => {
       if (filterFavorites && !hl.favorite) return false;
       if (filterWithNotes && !hl.note) return false;
       if (filterType !== 'all') {
-        const src = sources.find((s) => s.id === hl.source_id);
+        const src = sourcesMap.get(hl.source_id);
         if (src && src.type !== filterType) return false;
       }
       if (selectedTag !== 'all') {
@@ -89,20 +92,30 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
         if (!hasTag) return false;
       }
       return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'random') {
-        return 0.5 - Math.random();
-      }
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
+    if (sortBy === 'random') {
+      const shuffled = [...list];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    }
+
+    return [...list].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [highlights, sourcesMap, filterFavorites, filterWithNotes, filterType, selectedTag, sortBy]);
+
   // Extract unique tags for sidebar filter
-  const allTags = Array.from(
-    new Set(
-      highlights.flatMap((h) => (h.tags ? h.tags.map((t) => t.name) : []))
-    )
-  );
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    highlights.forEach((h) => {
+      h.tags?.forEach((t) => tagSet.add(t.name));
+    });
+    return Array.from(tagSet).sort();
+  }, [highlights]);
 
   const onboardingSteps = [
     {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Highlight } from '../types';
 import { EmailTarget } from '../components/SendEmailModal';
 
@@ -15,27 +15,27 @@ export function useModalState() {
   const [activeAskAiHighlight, setActiveAskAiHighlight] = useState<Highlight | null>(null);
   const [activeEmailTarget, setActiveEmailTarget] = useState<EmailTarget | null>(null);
 
-  const openCreateWithTab = (tab: CreateModalTab) => {
+  const openCreateWithTab = useCallback((tab: CreateModalTab) => {
     setCreateInitialTab(tab);
     setIsCreateOpen(true);
-  };
+  }, []);
 
-  const closeCreate = () => setIsCreateOpen(false);
-  const openImport = () => setIsImportOpen(true);
-  const closeImport = () => setIsImportOpen(false);
-  const openExport = () => setIsExportOpen(true);
-  const closeExport = () => setIsExportOpen(false);
-  const openCommandPalette = () => setIsCommandPaletteOpen(true);
-  const closeCommandPalette = () => setIsCommandPaletteOpen(false);
-  const toggleCommandPalette = () => setIsCommandPaletteOpen((prev) => !prev);
-  const openTools = () => setIsToolsOpen(true);
-  const closeTools = () => setIsToolsOpen(false);
-  const openShare = (hl: Highlight) => setActiveShareHighlight(hl);
-  const closeShare = () => setActiveShareHighlight(null);
-  const openAskAi = (hl: Highlight) => setActiveAskAiHighlight(hl);
-  const closeAskAi = () => setActiveAskAiHighlight(null);
-  const openSendEmail = (target: EmailTarget) => setActiveEmailTarget(target);
-  const closeSendEmail = () => setActiveEmailTarget(null);
+  const closeCreate = useCallback(() => setIsCreateOpen(false), []);
+  const openImport = useCallback(() => setIsImportOpen(true), []);
+  const closeImport = useCallback(() => setIsImportOpen(false), []);
+  const openExport = useCallback(() => setIsExportOpen(true), []);
+  const closeExport = useCallback(() => setIsExportOpen(false), []);
+  const openCommandPalette = useCallback(() => setIsCommandPaletteOpen(true), []);
+  const closeCommandPalette = useCallback(() => setIsCommandPaletteOpen(false), []);
+  const toggleCommandPalette = useCallback(() => setIsCommandPaletteOpen((prev) => !prev), []);
+  const openTools = useCallback(() => setIsToolsOpen(true), []);
+  const closeTools = useCallback(() => setIsToolsOpen(false), []);
+  const openShare = useCallback((hl: Highlight) => setActiveShareHighlight(hl), []);
+  const closeShare = useCallback(() => setActiveShareHighlight(null), []);
+  const openAskAi = useCallback((hl: Highlight) => setActiveAskAiHighlight(hl), []);
+  const closeAskAi = useCallback(() => setActiveAskAiHighlight(null), []);
+  const openSendEmail = useCallback((target: EmailTarget) => setActiveEmailTarget(target), []);
+  const closeSendEmail = useCallback(() => setActiveEmailTarget(null), []);
 
   return {
     isCreateOpen,

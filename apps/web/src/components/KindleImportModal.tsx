@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Book,
@@ -10,7 +10,6 @@ import {
   FileText,
 } from 'lucide-react';
 import { api, ImportSummary } from '../services/api';
-import { extractPdfInBrowser } from '../services/pdfExtractor';
 
 interface KindleImportModalProps {
   isOpen: boolean;
@@ -46,6 +45,25 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{
+    active: boolean;
+    indexed: number;
+    total: number;
+    done: boolean;
+    error?: string;
+  } | null>(null);
+  const syncCancelledRef = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      syncCancelledRef.current = true;
+    } else {
+      syncCancelledRef.current = false;
+    }
+    return () => {
+      syncCancelledRef.current = true;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -81,29 +99,89 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
     }
   };
 
+  const runAutoEmbeddingSync = async () => {
+    syncCancelledRef.current = false;
+    try {
+      const initialStatus = await api.getEmbeddingsStatus();
+      if (initialStatus.indexedHighlights >= initialStatus.totalHighlights) {
+        setSyncProgress({
+          active: false,
+          indexed: initialStatus.indexedHighlights,
+          total: initialStatus.totalHighlights,
+          done: true,
+        });
+        return;
+      }
+
+      setSyncProgress({
+        active: true,
+        indexed: initialStatus.indexedHighlights,
+        total: initialStatus.totalHighlights,
+        done: false,
+      });
+
+      for (let i = 0; i < 60; i++) {
+        if (syncCancelledRef.current) break;
+        const res = await api.syncEmbeddings(undefined, 30);
+        const status = await api.getEmbeddingsStatus();
+        if (syncCancelledRef.current) break;
+        const done =
+          res.indexedCount === 0 || status.indexedHighlights >= status.totalHighlights;
+        setSyncProgress({
+          active: !done,
+          indexed: status.indexedHighlights,
+          total: status.totalHighlights,
+          done,
+        });
+        if (done) break;
+      }
+    } catch (err) {
+      if (!syncCancelledRef.current) {
+        setSyncProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                active: false,
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : 'Background sync paused (cron will resume automatically)',
+              }
+            : null
+        );
+      }
+    }
+  };
+
   const handleImport = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
+    setSyncProgress(null);
 
     try {
+      let shouldAutoSync = false;
       if (activeTab === 'kindle') {
         const res = await importKindleFn(clippingsText);
         setResult(
           `Processed ${res.data.booksProcessed} books (${res.data.booksCreated} new) and imported ${res.data.highlightsImported} highlights.`
         );
+        shouldAutoSync = res.data.highlightsImported > 0;
       } else if (activeTab === 'readwise') {
         const res = await api.importCsv(csvText, 'readwise');
         setResult(
           `Readwise CSV: ${res.data.booksProcessed} sources (${res.data.booksCreated} new) and ${res.data.highlightsImported} highlights imported.`
         );
+        shouldAutoSync = res.data.highlightsImported > 0;
       } else if (activeTab === 'books_csv') {
         const res = await api.importCsv(csvText, csvFormat);
         setResult(
           `Imported (${res.data.detectedFormat || csvFormat}): ${res.data.booksProcessed} books (${res.data.booksCreated} new) and ${res.data.highlightsImported} highlights/reviews.`
         );
+        shouldAutoSync = res.data.highlightsImported > 0;
       } else if (activeTab === 'pdf') {
         if (pdfFile && !pdfFallbackText.trim()) {
+          const { extractPdfInBrowser } = await import('../services/pdfExtractor');
           const extracted = await extractPdfInBrowser(pdfFile);
           const { source: src, highlightsImported } = await api.importPdfFile({
             title: pdfTitle.trim() || extracted.title,
@@ -120,6 +198,7 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
           setResult(
             `Imported PDF "${src.name}" (${src.word_count} words${hlMsg}) into Articles → Inbox!`
           );
+          shouldAutoSync = highlightsImported > 0;
         } else {
           const { source: src } = await api.importPdfFile({
             title: pdfTitle.trim() || undefined,
@@ -142,6 +221,9 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
         );
       }
       onSuccess();
+      if (shouldAutoSync) {
+        void runAutoEmbeddingSync();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');
     } finally {
@@ -389,6 +471,47 @@ export const KindleImportModal: React.FC<KindleImportModalProps> = ({
             <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs flex items-start gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <span>{result}</span>
+            </div>
+          )}
+
+          {syncProgress && (
+            <div className="p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/60 dark:border-teal-800/40 text-xs space-y-2">
+              <div className="flex items-center justify-between text-teal-900 dark:text-teal-200 font-medium">
+                <span className="flex items-center gap-1.5">
+                  {syncProgress.active ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-700 dark:text-teal-400" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  )}
+                  <span>
+                    {syncProgress.active
+                      ? 'Syncing semantic embeddings in batches...'
+                      : syncProgress.done
+                      ? 'Semantic search index up to date'
+                      : 'Semantic sync paused (background cron will finish)'}
+                  </span>
+                </span>
+                <span className="tabular-nums text-[11px]">
+                  {syncProgress.indexed} / {syncProgress.total}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-teal-100 dark:bg-teal-900/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-teal-700 dark:bg-teal-400 transition-all duration-300"
+                  style={{
+                    width: `${
+                      syncProgress.total > 0
+                        ? Math.min(100, Math.round((syncProgress.indexed / syncProgress.total) * 100))
+                        : 100
+                    }%`,
+                  }}
+                />
+              </div>
+              {syncProgress.error && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                  {syncProgress.error}
+                </p>
+              )}
             </div>
           )}
 

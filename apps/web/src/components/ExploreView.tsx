@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { ReadingStatus, TopicDiscoveryResult } from '../types';
 import { api } from '../services/api';
+import { getSafeHttpUrl } from '../utils/url';
 
 const TOPICS_CACHE_KEY = 'mnema_ai_topics_cache';
 
@@ -55,8 +56,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     setIsDiscovering(true);
     setDiscoveryError(null);
     try {
-      const customKey = localStorage.getItem('mnema_gemini_api_key') || undefined;
-      const result = await api.discoverTopics(customKey);
+      const result = await api.discoverTopics();
       setDiscovery(result);
       try {
         sessionStorage.setItem(TOPICS_CACHE_KEY, JSON.stringify(result));
@@ -319,15 +319,19 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               </div>
 
               <div className="mt-4 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-neutral-400 hover:text-teal-700 flex items-center gap-1"
-                >
-                  <span>Read original</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                {getSafeHttpUrl(item.url) ? (
+                  <a
+                    href={getSafeHttpUrl(item.url)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-neutral-400 hover:text-teal-700 flex items-center gap-1"
+                  >
+                    <span>Read original</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                ) : (
+                  <span />
+                )}
 
                 <button
                   onClick={() => handleSaveClassic(item)}

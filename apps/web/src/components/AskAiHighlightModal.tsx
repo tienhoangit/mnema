@@ -69,8 +69,6 @@ export const AskAiHighlightModal: React.FC<AskAiHighlightModalProps> = ({
     setLoading(true);
     setQuestion('');
 
-    const apiKey = localStorage.getItem('mnema_gemini_api_key') || undefined;
-
     try {
       const response = await api.askHighlightMultiTurn({
         threadId: threadId || undefined,
@@ -79,7 +77,6 @@ export const AskAiHighlightModal: React.FC<AskAiHighlightModalProps> = ({
         highlightContent: highlight.content,
         sourceTitle: highlight.source_name || 'Untitled Source',
         message: promptText,
-        apiKey,
       });
 
       setThreadId(response.threadId);

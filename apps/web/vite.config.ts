@@ -1,6 +1,10 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [
@@ -39,6 +43,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globIgnores: ['**/pdf.worker*'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/\.well-known\//, /^\/authorize/, /^\/token/, /^\/register/, /^\/revoke/],
       },
@@ -46,6 +51,9 @@ export default defineConfig({
   ],
   resolve: {
     preserveSymlinks: true,
+    alias: {
+      '@mnema/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+    },
   },
   server: {
     port: 5173,

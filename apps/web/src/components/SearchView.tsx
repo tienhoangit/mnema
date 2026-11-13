@@ -9,6 +9,7 @@ import {
   Loader2,
   Brain,
   RefreshCw,
+  Share2,
 } from 'lucide-react';
 import { Highlight, SearchResults, EmbeddingsStatus, SemanticSearchResult } from '../types';
 import { api } from '../services/api';
@@ -23,6 +24,9 @@ interface SearchViewProps {
 
 export const SearchView: React.FC<SearchViewProps> = ({
   onSelectSource,
+  onSelectHighlight,
+  onAskAiHighlight,
+  onShareHighlight,
 }) => {
   const [activeMode, setActiveMode] = useState<'keyword' | 'semantic' | 'ask_ai'>('keyword');
   const [query, setQuery] = useState('');
@@ -74,9 +78,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
           if (isMounted) setIsLoading(false);
         });
     } else if (activeMode === 'semantic') {
-      const apiKey = localStorage.getItem('mnema_gemini_api_key') || undefined;
       api
-        .searchSemantic(debouncedQuery, 20, apiKey)
+        .searchSemantic(debouncedQuery, 20)
         .then((res) => {
           if (isMounted) setSemanticResult(res);
         })
@@ -98,9 +101,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const handleSyncSemanticIndex = async () => {
     setIsSyncingIndex(true);
     try {
-      const apiKey = localStorage.getItem('mnema_gemini_api_key') || undefined;
       for (let i = 0; i < 20; i++) {
-        const res = await api.syncEmbeddings(apiKey);
+        const res = await api.syncEmbeddings();
         const status = await api.getEmbeddingsStatus();
         setEmbedStatus(status);
         if (res.indexedCount === 0 || status.indexedHighlights >= status.totalHighlights) {
@@ -123,10 +125,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
     setAiAnswer(null);
     setAiCitations([]);
 
-    const apiKey = localStorage.getItem('mnema_gemini_api_key') || undefined;
-
     try {
-      const res = await api.askLibraryAi(aiQuestion.trim(), apiKey);
+      const res = await api.askLibraryAi(aiQuestion.trim());
       setAiAnswer(res.answer);
       setAiCitations(res.citations || []);
     } catch (err) {
@@ -350,7 +350,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       {results.highlights.map((hl) => (
                         <div
                           key={hl.id}
-                          onClick={() => onSelectSource(hl.source_id)}
+                          onClick={() => {
+                            if (onSelectHighlight) onSelectHighlight(hl);
+                            else onSelectSource(hl.source_id);
+                          }}
                           className="p-4 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 hover:border-teal-700/60 shadow-2xs cursor-pointer transition-all space-y-2"
                         >
                           <blockquote className="font-serif italic text-xs sm:text-sm text-neutral-800 dark:text-neutral-100 leading-relaxed">
@@ -360,9 +363,37 @@ export const SearchView: React.FC<SearchViewProps> = ({
                             <span className="font-semibold text-neutral-600 dark:text-neutral-300 truncate">
                               {hl.source_name || 'Source'} {hl.source_author ? `· ${hl.source_author}` : ''}
                             </span>
-                            {hl.location && (
-                              <span className="font-mono text-[10px]">{hl.location}</span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {hl.location && (
+                                <span className="font-mono text-[10px]">{hl.location}</span>
+                              )}
+                              {onAskAiHighlight && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAskAiHighlight(hl);
+                                  }}
+                                  className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-purple-600 transition-colors"
+                                  title="Ask AI"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {onShareHighlight && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onShareHighlight(hl);
+                                  }}
+                                  className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-teal-700 transition-colors"
+                                  title="Share Quote"
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -443,7 +474,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     {semanticResult.highlights.map((hl) => (
                       <div
                         key={hl.id}
-                        onClick={() => onSelectSource(hl.source_id)}
+                        onClick={() => {
+                          if (onSelectHighlight) onSelectHighlight(hl);
+                          else onSelectSource(hl.source_id);
+                        }}
                         className="p-4 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 hover:border-purple-600/60 shadow-2xs cursor-pointer transition-all space-y-2"
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -451,11 +485,39 @@ export const SearchView: React.FC<SearchViewProps> = ({
                             {hl.source_name || 'Source'}
                             {hl.source_author ? ` · ${hl.source_author}` : ''}
                           </span>
-                          {typeof hl.similarity === 'number' && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 shrink-0">
-                              {hl.similarity}% match
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {typeof hl.similarity === 'number' && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 shrink-0">
+                                {hl.similarity}% match
+                              </span>
+                            )}
+                            {onAskAiHighlight && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onAskAiHighlight(hl);
+                                }}
+                                className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-purple-600 transition-colors"
+                                title="Ask AI"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {onShareHighlight && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onShareHighlight(hl);
+                                }}
+                                className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-teal-700 transition-colors"
+                                title="Share Quote"
+                              >
+                                <Share2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <blockquote className="font-serif italic text-xs sm:text-sm text-neutral-800 dark:text-neutral-100 leading-relaxed">
                           “{hl.content}”
@@ -542,7 +604,15 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       {aiCitations.map((c, i) => (
                         <div
                           key={i}
-                          className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 text-xs text-neutral-700 dark:text-neutral-300"
+                          onClick={() => {
+                            if (c.source_id) {
+                              if (onSelectHighlight) onSelectHighlight(c);
+                              else onSelectSource(c.source_id);
+                            }
+                          }}
+                          className={`p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 text-xs text-neutral-700 dark:text-neutral-300 ${
+                            c.source_id ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors' : ''
+                          }`}
                         >
                           <p className="font-serif italic">"{c.content}"</p>
                           <span className="text-[10px] text-neutral-400 mt-1 block">

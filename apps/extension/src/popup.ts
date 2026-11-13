@@ -1,4 +1,4 @@
-import { buildAuthHeaders, getConfig, saveConfig } from './storage';
+import { assertJsonApiResponse, buildAuthHeaders, getConfig, saveConfig } from './storage';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
@@ -194,6 +194,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           },
         }),
       });
+
+      await assertJsonApiResponse(res);
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));

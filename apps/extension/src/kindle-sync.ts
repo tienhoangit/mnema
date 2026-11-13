@@ -1,5 +1,5 @@
 // Kindle Notebook Sync Content Script (read.amazon.com/notebook)
-import { buildAuthHeaders, getConfig } from './storage';
+import { assertJsonApiResponse, buildAuthHeaders, getConfig } from './storage';
 
 (function () {
   function injectSyncButton() {
@@ -51,6 +51,21 @@ import { buildAuthHeaders, getConfig } from './storage';
   }
 
   function extractKindleHighlights() {
+    const notebookContainer =
+      document.querySelector('#kp-notebook-highlights') ||
+      document.querySelector('#kp-notebook-annotations') ||
+      document.querySelector('#annotation-scroller') ||
+      document.querySelector('.kp-notebook-annotation-container');
+
+    if (!notebookContainer) {
+      return {
+        bookTitle: 'Kindle Book',
+        bookAuthor: null,
+        highlights: [],
+        diagnostic: 'Không tìm thấy khung Kindle Notebook (hãy chọn 1 cuốn sách hoặc kiểm tra đăng nhập Amazon).',
+      };
+    }
+
     // Extract currently active book details
     const titleEl =
       document.querySelector('#kp-notebook-highlights h2') ||
@@ -97,6 +112,10 @@ import { buildAuthHeaders, getConfig } from './storage';
       bookTitle,
       bookAuthor,
       highlights,
+      diagnostic:
+        highlights.length === 0
+          ? 'Sách này chưa có trích dẫn nào hoặc cấu trúc DOM Kindle đã thay đổi.'
+          : undefined,
     };
   }
 
@@ -104,13 +123,14 @@ import { buildAuthHeaders, getConfig } from './storage';
     const textSpan = document.getElementById('mnema-sync-text');
     if (textSpan) textSpan.textContent = 'Đang quét trích dẫn...';
 
-    const { bookTitle, bookAuthor, highlights } = extractKindleHighlights();
+    const { bookTitle, bookAuthor, highlights, diagnostic } = extractKindleHighlights();
 
     if (highlights.length === 0) {
-      if (textSpan) textSpan.textContent = 'Không tìm thấy trích dẫn!';
+      if (diagnostic) console.warn('[Mnema Kindle Sync]', diagnostic);
+      if (textSpan) textSpan.textContent = diagnostic || 'Không tìm thấy trích dẫn!';
       setTimeout(() => {
         if (textSpan) textSpan.textContent = 'Đồng bộ Kindle sang Mnema';
-      }, 2500);
+      }, 3500);
       return;
     }
 
@@ -135,6 +155,8 @@ import { buildAuthHeaders, getConfig } from './storage';
         headers,
         body: JSON.stringify(payload),
       });
+
+      await assertJsonApiResponse(res);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);

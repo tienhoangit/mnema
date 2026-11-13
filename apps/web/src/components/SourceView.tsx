@@ -29,6 +29,7 @@ import { Source, Highlight, ReadingStatus, HighlightColor, SourceType, PublicSha
 import { HighlightCard } from './shared/HighlightCard';
 import { EmptyState } from './shared/EmptyState';
 import { api } from '../services/api';
+import { getSafeHttpUrl } from '../utils/url';
 
 interface SourceViewProps {
   source: Source;
@@ -318,11 +319,11 @@ export const SourceView: React.FC<SourceViewProps> = ({
             )}
           </div>
 
-          {source.url && (
+          {getSafeHttpUrl(source.url) && (
             <a
-              href={source.url}
+              href={getSafeHttpUrl(source.url)!}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               title="Open external source URL"
             >

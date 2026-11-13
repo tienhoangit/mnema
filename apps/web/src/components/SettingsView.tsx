@@ -53,8 +53,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isSendingTest, setIsSendingTest] = useState(false);
 
   useEffect(() => {
-    const savedLocal = localStorage.getItem('mnema_gemini_api_key') || '';
-    setGeminiApiKey(savedLocal);
+    try {
+      localStorage.removeItem('mnema_gemini_api_key');
+    } catch {}
 
     api
       .getSettings()
@@ -71,17 +72,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSaveApiKey = async () => {
     const trimmed = geminiApiKey.trim();
-    if (trimmed) {
-      localStorage.setItem('mnema_gemini_api_key', trimmed);
-    } else {
+    try {
       localStorage.removeItem('mnema_gemini_api_key');
-    }
+    } catch {}
 
     try {
       const updated = await api.updateSettings({ gemini_api_key: trimmed });
       setSettings(updated);
+      setGeminiApiKey('');
     } catch {
-      // localStorage still updated
+      // failed to update settings
     }
     setIsKeySaved(true);
     setTimeout(() => setIsKeySaved(false), 2000);

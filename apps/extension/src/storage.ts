@@ -1,16 +1,6 @@
-export interface ExtensionConfig {
-  apiUrl: string;
-  apiToken: string;
-  cfAccessClientId: string;
-  cfAccessClientSecret: string;
-}
-
-export const DEFAULT_CONFIG: ExtensionConfig = {
-  apiUrl: 'http://127.0.0.1:8787',
-  apiToken: '',
-  cfAccessClientId: '',
-  cfAccessClientSecret: '',
-};
+import { ExtensionConfig, DEFAULT_CONFIG } from '@mnema/shared';
+export type { ExtensionConfig };
+export { DEFAULT_CONFIG };
 
 export async function getConfig(): Promise<ExtensionConfig> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
@@ -72,4 +62,17 @@ export function buildAuthHeaders(config: ExtensionConfig): Record<string, string
     headers['CF-Access-Client-Secret'] = cfAccessClientSecret;
   }
   return headers;
+}
+
+export async function assertJsonApiResponse(res: Response): Promise<void> {
+  const contentType = res.headers.get('content-type') || '';
+  if (
+    res.status === 302 ||
+    (res.redirected && res.url.includes('cloudflareaccess.com')) ||
+    contentType.includes('text/html')
+  ) {
+    throw new Error(
+      'Cloudflare Access authentication required (HTML/302 redirect). Please sign in via browser or configure CF-Access Service Token in extension Settings.'
+    );
+  }
 }

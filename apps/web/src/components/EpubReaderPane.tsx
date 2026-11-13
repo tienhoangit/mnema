@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Highlighter, Loader2, List, X } from 'lucide-react';
 import type { Book, Rendition, NavItem } from 'epubjs';
 import { Highlight, HighlightColor, ReaderSettings } from '../types';
+import { apiFetch } from '../services/api';
 
 interface EpubReaderPaneProps {
   sourceId: string;
@@ -88,7 +89,7 @@ export const EpubReaderPane: React.FC<EpubReaderPaneProps> = ({
       setError(null);
 
       try {
-        const res = await fetch(`/api/sources/${sourceId}/epub`);
+        const res = await apiFetch(`/api/sources/${sourceId}/epub`);
         if (!res.ok) {
           throw new Error(`Failed to load EPUB (HTTP ${res.status})`);
         }

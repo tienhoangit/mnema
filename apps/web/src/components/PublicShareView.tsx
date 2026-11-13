@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BookOpen, Quote, MessageSquare, ExternalLink, Loader2, Eye, ArrowLeft } from 'lucide-react';
 import { PublicSharePayload } from '../types';
 import { api } from '../services/api';
+import { getSafeHttpUrl } from '../utils/url';
 
 interface PublicShareViewProps {
   slug: string;
@@ -112,11 +113,11 @@ export const PublicShareView: React.FC<PublicShareViewProps> = ({ slug }) => {
                   <p className="text-xs text-neutral-400">by {data.highlight.source_author}</p>
                 )}
               </div>
-              {data.highlight.source_url && (
+              {getSafeHttpUrl(data.highlight.source_url) && (
                 <a
-                  href={data.highlight.source_url}
+                  href={getSafeHttpUrl(data.highlight.source_url)!}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="flex items-center gap-1 text-teal-700 dark:text-teal-400 hover:underline font-medium"
                 >
                   <span>Original Source</span>
@@ -158,11 +159,11 @@ export const PublicShareView: React.FC<PublicShareViewProps> = ({ slug }) => {
                 <p className="text-xs text-neutral-400">
                   {(data.highlights || []).length} highlights shared
                 </p>
-                {data.source.url && (
+                {getSafeHttpUrl(data.source.url) && (
                   <a
-                    href={data.source.url}
+                    href={getSafeHttpUrl(data.source.url)!}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-teal-700 dark:text-teal-400 hover:underline font-medium pt-1"
                   >
                     <span>Visit Original Link</span>

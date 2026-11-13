@@ -152,49 +152,77 @@ export async function deletePendingHighlight(id: string): Promise<void> {
 // 3. Robust Background/Foreground Sync for iOS Safari & Modern Browsers
 let isSyncing = false;
 
-export async function syncPendingHighlights(): Promise<{ synced: number; remaining: number }> {
-  if (isSyncing || typeof navigator === 'undefined' || !navigator.onLine) {
+async function runPendingHighlightsSync(): Promise<{ synced: number; remaining: number }> {
+  let synced = 0;
+
+  const pending = await getPendingHighlights();
+  if (pending.length === 0) {
     return { synced: 0, remaining: 0 };
   }
 
-  isSyncing = true;
-  let synced = 0;
+  for (const item of pending) {
+    try {
+      const res = await fetch('/api/highlights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_id: item.source_id,
+          content: item.content,
+          note: item.note,
+          color: item.color,
+          location: item.location,
+          tags: item.tags,
+        }),
+      });
 
-  try {
-    const pending = await getPendingHighlights();
-    if (pending.length === 0) {
-      isSyncing = false;
-      return { synced: 0, remaining: 0 };
-    }
-
-    for (const item of pending) {
-      try {
-        const res = await fetch('/api/highlights', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source_id: item.source_id,
-            content: item.content,
-            note: item.note,
-            color: item.color,
-            location: item.location,
-            tags: item.tags,
-          }),
-        });
-
-        if (res.ok) {
-          await deletePendingHighlight(item.id);
-          synced++;
+      const contentType = res.headers.get('content-type') || '';
+      if (
+        (res.redirected && res.url.includes('cloudflareaccess.com')) ||
+        contentType.includes('text/html')
+      ) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('mnema:session-expired'));
         }
-      } catch (err: any) {
-        console.warn(`Sync failed for pending highlight ${item.id}:`, err?.message);
-        // If network went offline during sync, break early
-        if (typeof navigator !== 'undefined' && !navigator.onLine) break;
+        break;
       }
-    }
 
-    const remaining = (await getPendingHighlights()).length;
-    return { synced, remaining };
+      if (res.ok && contentType.includes('application/json')) {
+        await deletePendingHighlight(item.id);
+        synced++;
+      }
+    } catch (err: any) {
+      console.warn(`Sync failed for pending highlight ${item.id}:`, err?.message);
+      // If network went offline during sync, break early
+      if (typeof navigator !== 'undefined' && !navigator.onLine) break;
+    }
+  }
+
+  const remaining = (await getPendingHighlights()).length;
+  return { synced, remaining };
+}
+
+export async function syncPendingHighlights(): Promise<{ synced: number; remaining: number }> {
+  if (typeof navigator === 'undefined' || !navigator.onLine) {
+    return { synced: 0, remaining: 0 };
+  }
+
+  if (navigator.locks && typeof navigator.locks.request === 'function') {
+    return navigator.locks.request(
+      'mnema_pending_highlights_sync',
+      { ifAvailable: true },
+      async (lock) => {
+        if (!lock) return { synced: 0, remaining: 0 };
+        return runPendingHighlightsSync();
+      }
+    );
+  }
+
+  if (isSyncing) {
+    return { synced: 0, remaining: 0 };
+  }
+  isSyncing = true;
+  try {
+    return await runPendingHighlightsSync();
   } finally {
     isSyncing = false;
   }

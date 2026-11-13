@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Source, Highlight, ReadingStatus, HighlightColor } from '../types';
-import { CreateNewModal } from './CreateNewModal';
-import { KindleImportModal } from './KindleImportModal';
-import { ExportModal } from './ExportModal';
-import { CommandPalette } from './CommandPalette';
-import { ShareQuoteModal } from './ShareQuoteModal';
-import { AskAiHighlightModal } from './AskAiHighlightModal';
-import { LibraryToolsModal } from './LibraryToolsModal';
-import { SendEmailModal, EmailTarget } from './SendEmailModal';
 import { api } from '../services/api';
+import type { EmailTarget } from './SendEmailModal';
+
+const CreateNewModal = lazy(() => import('./CreateNewModal').then((m) => ({ default: m.CreateNewModal })));
+const KindleImportModal = lazy(() => import('./KindleImportModal').then((m) => ({ default: m.KindleImportModal })));
+const ExportModal = lazy(() => import('./ExportModal').then((m) => ({ default: m.ExportModal })));
+const CommandPalette = lazy(() => import('./CommandPalette').then((m) => ({ default: m.CommandPalette })));
+const ShareQuoteModal = lazy(() => import('./ShareQuoteModal').then((m) => ({ default: m.ShareQuoteModal })));
+const AskAiHighlightModal = lazy(() => import('./AskAiHighlightModal').then((m) => ({ default: m.AskAiHighlightModal })));
+const LibraryToolsModal = lazy(() => import('./LibraryToolsModal').then((m) => ({ default: m.LibraryToolsModal })));
+const SendEmailModal = lazy(() => import('./SendEmailModal').then((m) => ({ default: m.SendEmailModal })));
 
 interface AppModalsProps {
   isCreateModalOpen: boolean;
@@ -102,67 +104,83 @@ export const AppModals: React.FC<AppModalsProps> = ({
   onToolsSuccess,
 }) => {
   return (
-    <>
-      <CreateNewModal
-        isOpen={isCreateModalOpen}
-        onClose={onCloseCreateModal}
-        sources={sources}
-        initialTab={createModalInitialTab}
-        onSubmitArticle={onSubmitArticle}
-        onSubmitHighlight={onSubmitHighlight}
-        onSubmitBook={onSubmitBook}
-      />
+    <Suspense fallback={null}>
+      {isCreateModalOpen && (
+        <CreateNewModal
+          isOpen={isCreateModalOpen}
+          onClose={onCloseCreateModal}
+          sources={sources}
+          initialTab={createModalInitialTab}
+          onSubmitArticle={onSubmitArticle}
+          onSubmitHighlight={onSubmitHighlight}
+          onSubmitBook={onSubmitBook}
+        />
+      )}
 
-      <KindleImportModal
-        isOpen={isImportModalOpen}
-        onClose={onCloseImportModal}
-        onSuccess={onImportSuccess}
-        importKindleFn={api.importKindle}
-      />
+      {isImportModalOpen && (
+        <KindleImportModal
+          isOpen={isImportModalOpen}
+          onClose={onCloseImportModal}
+          onSuccess={onImportSuccess}
+          importKindleFn={api.importKindle}
+        />
+      )}
 
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={onCloseExportModal}
-        highlights={allHighlights}
-        sources={sources}
-      />
+      {isExportModalOpen && (
+        <ExportModal
+          isOpen={isExportModalOpen}
+          onClose={onCloseExportModal}
+          highlights={allHighlights}
+          sources={sources}
+        />
+      )}
 
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={onCloseCommandPalette}
-        sources={sources}
-        highlights={allHighlights}
-        onSelectSource={onSelectSource}
-        onOpenAddModal={onOpenCreateModal}
-        onOpenImportModal={onOpenImportModal}
-        onOpenExportModal={onOpenExportModal}
-        onOpenReviewModal={onOpenReviewTab}
-        onToggleTheme={onToggleTheme}
-      />
+      {isCommandPaletteOpen && (
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={onCloseCommandPalette}
+          sources={sources}
+          highlights={allHighlights}
+          onSelectSource={onSelectSource}
+          onOpenAddModal={onOpenCreateModal}
+          onOpenImportModal={onOpenImportModal}
+          onOpenExportModal={onOpenExportModal}
+          onOpenReviewModal={onOpenReviewTab}
+          onToggleTheme={onToggleTheme}
+        />
+      )}
 
-      <ShareQuoteModal
-        isOpen={Boolean(activeShareHighlight)}
-        onClose={onCloseShareModal}
-        highlight={activeShareHighlight}
-      />
+      {Boolean(activeShareHighlight) && (
+        <ShareQuoteModal
+          isOpen={Boolean(activeShareHighlight)}
+          onClose={onCloseShareModal}
+          highlight={activeShareHighlight}
+        />
+      )}
 
-      <AskAiHighlightModal
-        isOpen={Boolean(activeAskAiHighlight)}
-        onClose={onCloseAskAiHighlight}
-        highlight={activeAskAiHighlight}
-      />
+      {Boolean(activeAskAiHighlight) && (
+        <AskAiHighlightModal
+          isOpen={Boolean(activeAskAiHighlight)}
+          onClose={onCloseAskAiHighlight}
+          highlight={activeAskAiHighlight}
+        />
+      )}
 
-      <LibraryToolsModal
-        isOpen={isToolsModalOpen}
-        onClose={onCloseToolsModal}
-        onSuccess={onToolsSuccess}
-      />
+      {isToolsModalOpen && (
+        <LibraryToolsModal
+          isOpen={isToolsModalOpen}
+          onClose={onCloseToolsModal}
+          onSuccess={onToolsSuccess}
+        />
+      )}
 
-      <SendEmailModal
-        isOpen={Boolean(activeEmailTarget)}
-        onClose={onCloseEmailModal}
-        target={activeEmailTarget}
-      />
-    </>
+      {Boolean(activeEmailTarget) && (
+        <SendEmailModal
+          isOpen={Boolean(activeEmailTarget)}
+          onClose={onCloseEmailModal}
+          target={activeEmailTarget}
+        />
+      )}
+    </Suspense>
   );
 };

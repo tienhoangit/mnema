@@ -5,7 +5,8 @@ import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import esbuild from 'esbuild';
 
-const API_DIR = path.resolve(import.meta.dirname);
+const TESTS_DIR = path.resolve(import.meta.dirname);
+const API_DIR = path.resolve(TESTS_DIR, '..');
 const MIGRATIONS_DIR = path.join(API_DIR, 'migrations');
 const BUNDLE_OUT = path.join(API_DIR, '.tmp-security-test.mjs');
 
@@ -211,6 +212,10 @@ async function run() {
     assert(noPinRes.status === 500, `Expected 500 when no PIN env vars set, got ${noPinRes.status}`);
 
     // Configured MCP_PIN -> 'mnema123' must fail with 401
+    const pinHash = crypto.createHash('sha256').update('hashed-pin-42').digest('hex');
+    const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+
     const defaultPinRejected = await callWorker(
       '/authorize',
       {
@@ -220,6 +225,8 @@ async function run() {
           pin: 'mnema123',
           client_id: client.client_id,
           redirect_uri: 'https://client.example.com/cb',
+          code_challenge: challenge,
+          code_challenge_method: 'S256',
         }),
       },
       { MCP_PIN: 'super-secret-999' }
@@ -227,9 +234,6 @@ async function run() {
     assert(defaultPinRejected.status === 401, `Default mnema123 should be rejected when MCP_PIN is set, got ${defaultPinRejected.status}`);
 
     // Configured AUTH_PIN_HASH -> works with matching PIN
-    const pinHash = crypto.createHash('sha256').update('hashed-pin-42').digest('hex');
-    const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
-    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
 
     // GET /authorize with unregistered redirect_uri -> 400
     const badGetAuth = await callWorker(
@@ -445,6 +449,210 @@ async function run() {
       telegramCalls[1].body.url.startsWith('https://public.mnema.app/api/webhooks/telegram/'),
       `Expected PUBLIC_ORIGIN, got ${telegramCalls[1].body.url}`
     );
+
+    // --- 5. Fail-Closed API Auth & Local Loopback ---
+    console.log('5. Testing fail-closed API auth...');
+    const unauthRemote = await callWorker('/api/sources', { method: 'GET' }, { REQUIRE_API_KEY: 'true' });
+    assert(unauthRemote.status === 401, `Expected 401 on remote /api/sources without auth, got ${unauthRemote.status}`);
+
+    const cfAccessAuthed = await callWorker(
+      '/api/sources',
+      { method: 'GET', headers: { 'Cf-Access-Jwt-Assertion': 'dummy.jwt.token' } },
+      { REQUIRE_API_KEY: 'true' }
+    );
+    assert(cfAccessAuthed.status === 200, `Expected 200 with Cf-Access-Jwt-Assertion, got ${cfAccessAuthed.status}`);
+
+    const localReqDev = new Request('http://127.0.0.1:8787/api/sources', { method: 'GET' });
+    const localResDev = await worker.fetch(localReqDev, { DB: db, OAUTH_KV: kv }, ctx);
+    assert(localResDev.status === 200, `Expected 200 on local dev without REQUIRE_API_KEY, got ${localResDev.status}`);
+
+    const localReqStrict = new Request('http://127.0.0.1:8787/api/sources', { method: 'GET' });
+    const localResStrict = await worker.fetch(localReqStrict, { DB: db, OAUTH_KV: kv, REQUIRE_API_KEY: 'true' }, ctx);
+    assert(localResStrict.status === 401, `Expected 401 on local request when REQUIRE_API_KEY=true, got ${localResStrict.status}`);
+
+    // --- 6. Secret Masking on Settings ---
+    console.log('6. Testing secret masking on settings...');
+    const settingsGet = await callWorker('/api/email/settings');
+    assert(settingsGet.status === 200, 'GET /api/email/settings should succeed');
+    const settingsData = (await settingsGet.json()).data;
+    assert(settingsData.has_newsletter_secret === true, 'has_newsletter_secret should be true');
+    assert(settingsData.newsletter_secret.includes('••••'), `newsletter_secret should be masked, got ${settingsData.newsletter_secret}`);
+    assert(settingsData.telegram_webhook_secret.includes('••••'), `telegram_webhook_secret should be masked, got ${settingsData.telegram_webhook_secret}`);
+
+    const regenRes = await callWorker('/api/email/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ regenerate_newsletter_secret: true }),
+    });
+    assert(regenRes.status === 200, 'PUT /api/email/settings regenerate should succeed');
+    const regenData = (await regenRes.json()).data;
+    assert(!regenData.newsletter_secret.includes('••••'), 'Regenerated newsletter_secret should be returned unmasked once');
+
+    // --- 7. Stored XSS Sanitization on POST /api/sources ---
+    console.log('7. Testing stored XSS sanitization...');
+    const xssPayload = '<p>Hello</p><script>alert(1)</script><svg onload="alert(2)"><circle/></svg><img src="x" onerror="alert(3)"><a href="javascript:alert(4)">Click</a><scr<script>ipt>alert(5)</scr</script>ipt>';
+    const xssRes = await callWorker('/api/sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'XSS Test', content_html: xssPayload }),
+    });
+    assert(xssRes.status === 201, `POST /api/sources XSS test failed: ${xssRes.status}`);
+    const xssCreated = (await xssRes.json()).data;
+    assert(!xssCreated.content_html.includes('<script'), 'Must strip <script>');
+    assert(!xssCreated.content_html.includes('<svg'), 'Must strip <svg>');
+    assert(!xssCreated.content_html.includes('onerror'), 'Must strip onerror');
+    assert(!xssCreated.content_html.includes('javascript:'), 'Must strip javascript: URI');
+
+    // --- 8. OAuth CSRF, Confidential Client & Rate Limiting + MCP Scope ---
+    console.log('8. Testing OAuth CSRF, confidential client, rate limit, and MCP scopes...');
+    const confReg = await callWorker('/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'Confidential Client',
+        redirect_uris: ['https://conf.example.com/cb'],
+        token_endpoint_auth_method: 'client_secret_post',
+      }),
+    });
+    const confClient = await confReg.json();
+    const getAuthRes = await callWorker(
+      `/authorize?client_id=${confClient.client_id}&redirect_uri=${encodeURIComponent('https://conf.example.com/cb')}&code_challenge=${challenge}&code_challenge_method=S256&scope=read`
+    );
+    assert(getAuthRes.status === 200, `GET /authorize should return 200, got ${getAuthRes.status}`);
+    const setCookie = getAuthRes.headers.get('set-cookie') || '';
+    const csrfCookieMatch = setCookie.match(/mnema_oauth_csrf=([^;]+)/);
+    assert(Boolean(csrfCookieMatch), 'GET /authorize must set CSRF cookie');
+    const authHtml = await getAuthRes.text();
+    const csrfInputMatch = authHtml.match(/name="csrf_token"\s+value="([^"]+)"/);
+    assert(Boolean(csrfInputMatch), 'GET /authorize HTML must include hidden csrf_token');
+
+    // Form POST without CSRF cookie -> 403
+    const noCsrfForm = new URLSearchParams({
+      pin: 'hashed-pin-42',
+      client_id: confClient.client_id,
+      redirect_uri: 'https://conf.example.com/cb',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      scope: 'read',
+      csrf_token: csrfInputMatch[1],
+    });
+    const noCsrfRes = await callWorker(
+      '/authorize',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: noCsrfForm.toString(),
+      },
+      { AUTH_PIN_HASH: pinHash }
+    );
+    assert(noCsrfRes.status === 403, `Form POST without CSRF cookie should return 403, got ${noCsrfRes.status}`);
+
+    // Form POST with matching CSRF cookie + field -> 302
+    const validCsrfRes = await callWorker(
+      '/authorize',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Cookie: `mnema_oauth_csrf=${csrfCookieMatch[1]}`,
+        },
+        body: noCsrfForm.toString(),
+      },
+      { AUTH_PIN_HASH: pinHash }
+    );
+    assert(validCsrfRes.status === 302, `Form POST with valid CSRF should return 302, got ${validCsrfRes.status}`);
+    const confCode = new URL(validCsrfRes.headers.get('location')).searchParams.get('code');
+
+    // Confidential client without client_secret -> 401
+    const missingSecToken = await callWorker('/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code: confCode,
+        client_id: confClient.client_id,
+        redirect_uri: 'https://conf.example.com/cb',
+        code_verifier: verifier,
+      }),
+    });
+    assert(missingSecToken.status === 401, `Confidential client without secret should be 401, got ${missingSecToken.status}`);
+
+    // Confidential client with valid client_secret -> 200 (read-only scope)
+    const readOnlyTokenRes = await callWorker('/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code: confCode,
+        client_id: confClient.client_id,
+        client_secret: confClient.client_secret,
+        redirect_uri: 'https://conf.example.com/cb',
+        code_verifier: verifier,
+      }),
+    });
+    assert(readOnlyTokenRes.status === 200, `Confidential client with valid secret should be 200, got ${readOnlyTokenRes.status}`);
+    const readOnlyToken = await readOnlyTokenRes.json();
+
+    // Read-only OAuth token calling mutating MCP tool 'add_tags' -> 403
+    const mcpReadOnlyMutate = await callWorker('/api/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${readOnlyToken.access_token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'add_tags', arguments: { tags: ['test'] } },
+      }),
+    });
+    assert(mcpReadOnlyMutate.status === 403, `Read-only OAuth token calling add_tags should be 403, got ${mcpReadOnlyMutate.status}`);
+
+    // --- 9. CORS Restriction & Telegram Webhook 403 ---
+    console.log('9. Testing CORS restriction and Telegram 403...');
+    const evilCors = await callWorker('/api/health', {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://evil.attacker.com', 'Access-Control-Request-Method': 'GET' },
+    });
+    assert(!evilCors.headers.get('access-control-allow-origin'), 'Evil origin must not receive ACAO header');
+
+    const extCors = await callWorker('/api/health', {
+      method: 'OPTIONS',
+      headers: { Origin: 'chrome-extension://abcdef123456', 'Access-Control-Request-Method': 'GET' },
+    });
+    assert(extCors.headers.get('access-control-allow-origin') === 'chrome-extension://abcdef123456', 'Chrome extension origin should be allowed');
+
+    // --- 10. Security Headers, CSP & Source URL Scheme Validation ---
+    console.log('10. Testing Security Headers, CSP & Source URL Scheme Validation...');
+    const localHostRes = await callWorker('/api/health', {
+      headers: { Host: 'localhost:8787' },
+    });
+    assert(localHostRes.headers.get('x-content-type-options') === 'nosniff', 'Missing nosniff header');
+    assert(localHostRes.headers.get('x-frame-options') === 'DENY', 'Missing X-Frame-Options DENY');
+    const localCsp = localHostRes.headers.get('content-security-policy') || '';
+    assert(localCsp.includes("connect-src 'self' http://localhost:*"), 'Localhost CSP missing localhost connect-src');
+
+    const prodHostRes = await callWorker('/api/health', {
+      headers: { Host: 'api.mnema.app' },
+    });
+    const prodCsp = prodHostRes.headers.get('content-security-policy') || '';
+    assert(prodCsp.includes("connect-src 'self' https: wss:"), 'Prod CSP missing strict https connect-src');
+
+    const attackerHostRes = await callWorker('/api/health', {
+      headers: { Host: 'localhost.attacker.com' },
+    });
+    const attackerCsp = attackerHostRes.headers.get('content-security-policy') || '';
+    assert(attackerCsp.includes("connect-src 'self' https: wss:"), 'localhost.attacker.com must NOT get dev connect-src');
+    assert(!attackerCsp.includes("http://localhost:*"), 'localhost.attacker.com must NOT have localhost in connect-src');
+
+    // Test POST /api/sources URL scheme validation
+    const badSchemeRes = await callWorker('/api/sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'javascript:alert(1)', name: 'Evil Source' }),
+    });
+    assert(badSchemeRes.status === 400, `javascript: URL scheme should be rejected with 400, got ${badSchemeRes.status}`);
 
     console.log('✅ ALL SECURITY AUDIT TESTS PASSED!');
   } finally {

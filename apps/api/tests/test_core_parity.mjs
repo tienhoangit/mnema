@@ -134,10 +134,22 @@ export async function runCoreParityTests() {
   await test('1. Email Settings CRUD & API key masking', async () => {
     const initial = await jsonReq('/email/settings');
     assert(initial.status === 200 && initial.json.data, 'GET /email/settings');
-    assert(initial.json.data.newsletter_secret, 'Should expose newsletter_secret');
-    assert(initial.json.data.telegram_webhook_secret, 'Should expose telegram_webhook_secret');
-    newsletterSecret = initial.json.data.newsletter_secret;
-    telegramSecret = initial.json.data.telegram_webhook_secret;
+    assert(initial.json.data.has_newsletter_secret, 'Should report has_newsletter_secret');
+    assert(initial.json.data.has_telegram_webhook_secret, 'Should report has_telegram_webhook_secret');
+    assert(initial.json.data.newsletter_secret.includes('••••'), 'GET /email/settings masks newsletter_secret');
+    assert(initial.json.data.telegram_webhook_secret.includes('••••'), 'GET /email/settings masks telegram_webhook_secret');
+
+    const regen = await jsonReq('/email/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        regenerate_newsletter_secret: true,
+        regenerate_telegram_secret: true,
+      }),
+    });
+    assert(regen.status === 200 && regen.json.data?.newsletter_secret && !regen.json.data.newsletter_secret.includes('••••'), 'Regenerate returns unmasked newsletter_secret');
+    assert(regen.json.data?.telegram_webhook_secret && !regen.json.data.telegram_webhook_secret.includes('••••'), 'Regenerate returns unmasked telegram_webhook_secret');
+    newsletterSecret = regen.json.data.newsletter_secret;
+    telegramSecret = regen.json.data.telegram_webhook_secret;
 
     const updated = await jsonReq('/email/settings', {
       method: 'PUT',
@@ -870,8 +882,21 @@ const isDirectExecution =
   pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 
 if (isDirectExecution) {
-  runCoreParityTests().catch((err) => {
-    console.error('Fatal runner error:', err);
-    process.exit(1);
-  });
+  let isServerRunning = false;
+  try {
+    const probe = await fetch(`${BASE}/sources`, { signal: AbortSignal.timeout(600) });
+    if (probe.status < 500) {
+      isServerRunning = true;
+    }
+  } catch {}
+
+  if (isServerRunning) {
+    runCoreParityTests().catch((err) => {
+      console.error('Fatal runner error:', err);
+      process.exit(1);
+    });
+  } else {
+    // Automatically launch in-process test server so standalone execution works
+    await import('./run_inprocess_tests.mjs');
+  }
 }

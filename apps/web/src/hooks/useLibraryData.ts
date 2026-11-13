@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../services/api';
+import { api, apiFetch } from '../services/api';
 import { Source, Highlight, ReviewAction } from '../types';
 
 interface UseLibraryDataProps {
@@ -51,7 +51,7 @@ export function useLibraryData({ currentTab, searchQuery, selectedSourceId }: Us
   const { data: activityData = [] } = useQuery({
     queryKey: ['activity'],
     queryFn: async () => {
-      const res = await fetch('/api/stats/activity');
+      const res = await apiFetch('/api/stats/activity');
       if (!res.ok) return [];
       const json = await res.json();
       return (json.data as { date: string; count: number }[]) || [];

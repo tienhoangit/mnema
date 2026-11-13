@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Send, Loader2, Key, Bot } from 'lucide-react';
+import { api } from '../services/api';
 
 interface AiCopilotModalProps {
   isOpen: boolean;
@@ -8,26 +9,33 @@ interface AiCopilotModalProps {
   articleContentText: string;
 }
 
-const GEMINI_KEY_STORAGE = 'mnema_gemini_api_key';
-
 export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
   isOpen,
   onClose,
   articleTitle,
   articleContentText,
 }) => {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(GEMINI_KEY_STORAGE) || '');
+  const [apiKey, setApiKey] = useState('');
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    try {
+      localStorage.removeItem('mnema_gemini_api_key');
+    } catch {}
+  }, []);
+
   if (!isOpen) return null;
 
   const handleSaveKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
+    const trimmed = key.trim();
+    setApiKey(trimmed);
+    if (trimmed) {
+      api.updateSettings({ gemini_api_key: trimmed }).catch(() => {});
+    }
   };
 
   const askAi = async (promptQuery: string) => {
@@ -36,22 +44,12 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
     setAnswer(null);
 
     try {
-      const res = await fetch('/api/ai/ask', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Gemini-Key': apiKey,
-        },
-        body: JSON.stringify({
-          question: promptQuery,
-          context: `Title: ${articleTitle}\n\nContent:\n${articleContentText.slice(0, 4000)}`,
-          apiKey: apiKey || undefined,
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to get AI response');
-      setAnswer(json.data.answer);
+      const res = await api.askArticleQuestion(
+        promptQuery,
+        `Title: ${articleTitle}\n\nContent:\n${articleContentText.slice(0, 4000)}`,
+        apiKey || undefined
+      );
+      setAnswer(res.answer);
     } catch (err: any) {
       setError(err.message || 'Error communicating with AI');
     } finally {
@@ -106,11 +104,11 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
                 className="w-full px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs text-neutral-800 dark:text-white"
               />
               <p className="text-[11px] text-neutral-500">
-                Stored locally in your browser. Get your free key at{' '}
+                Configured in Settings. Get your free key at{' '}
                 <a
                   href="https://aistudio.google.com/app/apikey"
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="underline text-teal-700"
                 >
                   Google AI Studio

@@ -1,34 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { ReadingStatus, Highlight } from './types';
 import { useReaderSettings } from './hooks/useReaderSettings';
 import { useLibraryData } from './hooks/useLibraryData';
 import { useModalState } from './hooks/useModalState';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
-import { HomeFeedView } from './components/HomeFeedView';
-import { DailyReviewView } from './components/DailyReviewView';
-import { ArticlesView } from './components/ArticlesView';
-import { SourcesView } from './components/SourcesView';
-import { SourceView } from './components/SourceView';
-import { NotesView } from './components/NotesView';
-import { SearchView } from './components/SearchView';
-import { TrashView } from './components/TrashView';
-import { StatsView } from './components/StatsView';
-import { ExploreView } from './components/ExploreView';
-import { TagsView } from './components/TagsView';
-import { SettingsView } from './components/SettingsView';
-import { IntegrationsView } from './components/IntegrationsView';
-import { PublicShareView } from './components/PublicShareView';
-import { ReaderView } from './components/ReaderView';
 import { AppModals } from './components/AppModals';
 import { syncPendingHighlights } from './services/offlineDb';
+
+const HomeFeedView = lazy(() => import('./components/HomeFeedView').then((m) => ({ default: m.HomeFeedView })));
+const DailyReviewView = lazy(() => import('./components/DailyReviewView').then((m) => ({ default: m.DailyReviewView })));
+const ArticlesView = lazy(() => import('./components/ArticlesView').then((m) => ({ default: m.ArticlesView })));
+const SourcesView = lazy(() => import('./components/SourcesView').then((m) => ({ default: m.SourcesView })));
+const SourceView = lazy(() => import('./components/SourceView').then((m) => ({ default: m.SourceView })));
+const NotesView = lazy(() => import('./components/NotesView').then((m) => ({ default: m.NotesView })));
+const SearchView = lazy(() => import('./components/SearchView').then((m) => ({ default: m.SearchView })));
+const TrashView = lazy(() => import('./components/TrashView').then((m) => ({ default: m.TrashView })));
+const StatsView = lazy(() => import('./components/StatsView').then((m) => ({ default: m.StatsView })));
+const ExploreView = lazy(() => import('./components/ExploreView').then((m) => ({ default: m.ExploreView })));
+const TagsView = lazy(() => import('./components/TagsView').then((m) => ({ default: m.TagsView })));
+const SettingsView = lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })));
+const IntegrationsView = lazy(() => import('./components/IntegrationsView').then((m) => ({ default: m.IntegrationsView })));
+const PublicShareView = lazy(() => import('./components/PublicShareView').then((m) => ({ default: m.PublicShareView })));
+const ReaderView = lazy(() => import('./components/ReaderView').then((m) => ({ default: m.ReaderView })));
 
 export const App: React.FC = () => {
   const path = typeof window !== 'undefined' ? window.location.pathname : '';
   if (path.startsWith('/share/')) {
     const slug = decodeURIComponent(path.slice('/share/'.length).split('/')[0] || '');
     if (slug) {
-      return <PublicShareView slug={slug} />;
+      return (
+        <Suspense fallback={<div className="min-h-screen bg-[#faf9f5] dark:bg-[#121214] flex items-center justify-center text-neutral-400">Loading shared note...</div>}>
+          <PublicShareView slug={slug} />
+        </Suspense>
+      );
     }
   }
   return <MainApp />;
@@ -69,6 +74,15 @@ const MainApp: React.FC = () => {
     undoReviewAction,
   } = useLibraryData({ currentTab, searchQuery, selectedSourceId });
 
+  // Session expired banner state (Cloudflare Access 302 / HTML redirect detection)
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    const onExpired = () => setSessionExpired(true);
+    window.addEventListener('mnema:session-expired', onExpired);
+    return () => window.removeEventListener('mnema:session-expired', onExpired);
+  }, []);
+
   // Sync pending offline highlights on startup (critical for iOS Safari) & on network restore
   useEffect(() => {
     const runSync = () => {
@@ -76,10 +90,15 @@ const MainApp: React.FC = () => {
         if (synced > 0) invalidateAll();
       });
     };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') runSync();
+    };
     runSync();
     window.addEventListener('online', runSync);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('online', runSync);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -409,6 +428,20 @@ const MainApp: React.FC = () => {
         onSelectTab={(tab) => setCurrentTab(tab)}
       />
 
+      {sessionExpired && (
+        <div className="bg-amber-600 text-white px-4 py-2 text-xs font-medium flex items-center justify-between gap-3 z-50">
+          <span>
+            Your Cloudflare Access session has expired. Offline cache fallback is paused to prevent stale reads.
+          </span>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1 rounded-lg bg-white text-amber-800 font-semibold hover:bg-amber-50 shrink-0"
+          >
+            Re-authenticate
+          </button>
+        </div>
+      )}
+
       {/* 2. Body: Sidebar + Main Stream */}
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
@@ -426,7 +459,9 @@ const MainApp: React.FC = () => {
           onUpdateSetting={updateSetting}
         />
 
-        {renderMainContent()}
+        <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8 text-neutral-400">Loading view...</div>}>
+          {renderMainContent()}
+        </Suspense>
       </div>
 
       {/* 3. Global Modals Orchestrator */}

@@ -1,5 +1,5 @@
 // Mnema Web Highlighter Content Script
-import { buildAuthHeaders, getConfig } from './storage';
+import { assertJsonApiResponse, buildAuthHeaders, getConfig } from './storage';
 
 (function () {
   let floatingBtn: HTMLButtonElement | null = null;
@@ -87,6 +87,8 @@ import { buildAuthHeaders, getConfig } from './storage';
           title: document.title || window.location.href,
         }),
       });
+
+      await assertJsonApiResponse(res);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);

@@ -40,6 +40,9 @@ for (const entry of entryPoints) {
     target: ['chrome100', 'es2022'],
     minify: false,
     sourcemap: false,
+    alias: {
+      '@mnema/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+    },
   });
 }
 

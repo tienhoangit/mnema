@@ -5,7 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import zlib from 'node:zlib';
 import esbuild from 'esbuild';
 
-const API_DIR = path.resolve(import.meta.dirname);
+const TESTS_DIR = path.resolve(import.meta.dirname);
+const API_DIR = path.resolve(TESTS_DIR, '..');
 const MIGRATIONS_DIR = path.join(API_DIR, 'migrations');
 const BUNDLE_OUT = path.join(API_DIR, '.tmp-worker-test.mjs');
 
@@ -256,14 +257,15 @@ async function run() {
 
     // 2. Run existing test_comparison.mjs
     console.log('=== PART A: Running existing test_comparison.mjs ===');
-    await import(pathToFileURL(path.join(API_DIR, 'test_comparison.mjs')).href);
+    await import(pathToFileURL(path.join(TESTS_DIR, 'test_comparison.mjs')).href);
 
     // Wait small tick if test_comparison starts async main() without top-level await
     await new Promise((r) => setTimeout(r, 400));
 
     // 3. Run test_core_parity.mjs
     console.log('\n=== PART B: Running test_core_parity.mjs ===');
-    const { runCoreParityTests } = await import(pathToFileURL(path.join(API_DIR, 'test_core_parity.mjs')).href);
+    enableWorkersAiMock = true;
+    const { runCoreParityTests } = await import(pathToFileURL(path.join(TESTS_DIR, 'test_core_parity.mjs')).href);
     await runCoreParityTests();
 
     // 4. Part C: Deep mocked tests (Cron Digest, RSS XML, OCR Gemini, Notion Sync, Workers AI, PKZIP CRC32)

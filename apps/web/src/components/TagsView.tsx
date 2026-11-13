@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Tag as TagIcon, Plus, Search, Trash2, Check, Tag } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Highlight, Tag as TagType } from '../types';
@@ -51,33 +51,35 @@ export const TagsView: React.FC<TagsViewProps> = ({ highlights, onSelectTag }) =
     },
   });
 
-  // Combine and merge with any highlight tags
-  const tagsMap = new Map<string, TagType>();
-  dbTags.forEach((t) => {
-    tagsMap.set(t.name.toLowerCase(), t);
-  });
-
-  // Count highlight occurrences
-  highlights.forEach((hl) => {
-    hl.tags?.forEach((t) => {
-      const lower = t.name.toLowerCase();
-      const existing = tagsMap.get(lower);
-      if (existing) {
-        existing.count = Math.max(existing.count || 0, 1);
-      } else {
-        tagsMap.set(lower, {
-          id: t.id || lower,
-          name: t.name,
-          color: t.color || '#0d9488',
-          count: 1,
-        });
-      }
+  // Combine tags from DB (which already have accurate global usage counts)
+  const allTags = useMemo(() => {
+    const tagsMap = new Map<string, TagType>();
+    dbTags.forEach((t) => {
+      tagsMap.set(t.name.toLowerCase(), {
+        ...t,
+        count: Number(t.count ?? 0),
+      });
     });
-  });
 
-  const allTags = Array.from(tagsMap.values())
-    .filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => (b.count || 0) - (a.count || 0));
+    // Merge any client-side tags attached to local highlights not yet in dbTags
+    highlights.forEach((hl) => {
+      hl.tags?.forEach((t) => {
+        const lower = t.name.toLowerCase();
+        if (!tagsMap.has(lower)) {
+          tagsMap.set(lower, {
+            id: t.id || lower,
+            name: t.name,
+            color: t.color || '#0d9488',
+            count: 1,
+          });
+        }
+      });
+    });
+
+    return Array.from(tagsMap.values())
+      .filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => (b.count || 0) - (a.count || 0));
+  }, [dbTags, highlights, search]);
 
   const handleCreateTag = (e: React.FormEvent) => {
     e.preventDefault();

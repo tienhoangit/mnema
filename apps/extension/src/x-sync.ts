@@ -1,5 +1,5 @@
 // X / Twitter Bookmarks Sync Content Script (x.com/i/bookmarks)
-import { buildAuthHeaders, getConfig } from './storage';
+import { assertJsonApiResponse, buildAuthHeaders, getConfig } from './storage';
 
 (function () {
   function injectSyncButton() {
@@ -49,8 +49,33 @@ import { buildAuthHeaders, getConfig } from './storage';
     bubble?.addEventListener('click', handleSync);
   }
 
-  function extractBookmarks() {
+  function extractBookmarks(): {
+    items: Array<{
+      title: string;
+      author: string;
+      type: string;
+      url: string;
+      content: string;
+      note?: string;
+    }>;
+    diagnostic?: string;
+  } {
+    const mainColumn = document.querySelector('main[role="main"], [data-testid="primaryColumn"]');
+    if (!mainColumn) {
+      return {
+        items: [],
+        diagnostic: 'Không tìm thấy khung nội dung X/Twitter (DOM có thể đã thay đổi hoặc chưa đăng nhập).',
+      };
+    }
+
     const tweetArticles = document.querySelectorAll('article[data-testid="tweet"]');
+    if (tweetArticles.length === 0) {
+      return {
+        items: [],
+        diagnostic: 'Không tìm thấy tweet nào trên trang Bookmarks (hãy cuộn xuống hoặc kiểm tra đăng nhập).',
+      };
+    }
+
     const items: Array<{
       title: string;
       author: string;
@@ -90,20 +115,21 @@ import { buildAuthHeaders, getConfig } from './storage';
       }
     });
 
-    return items;
+    return { items };
   }
 
   async function handleSync() {
     const textSpan = document.getElementById('mnema-x-sync-text');
     if (textSpan) textSpan.textContent = 'Đang quét bookmarks...';
 
-    const items = extractBookmarks();
+    const { items, diagnostic } = extractBookmarks();
 
     if (items.length === 0) {
-      if (textSpan) textSpan.textContent = 'Không tìm thấy bookmarks trên màn hình!';
+      if (diagnostic) console.warn('[Mnema X Sync]', diagnostic);
+      if (textSpan) textSpan.textContent = diagnostic || 'Không tìm thấy bookmarks trên màn hình!';
       setTimeout(() => {
         if (textSpan) textSpan.textContent = 'Đồng bộ X Bookmarks sang Mnema';
-      }, 2500);
+      }, 3500);
       return;
     }
 
@@ -119,6 +145,8 @@ import { buildAuthHeaders, getConfig } from './storage';
         headers,
         body: JSON.stringify(items),
       });
+
+      await assertJsonApiResponse(res);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
