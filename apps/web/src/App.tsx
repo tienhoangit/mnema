@@ -5,6 +5,8 @@ import { useLibraryData } from './hooks/useLibraryData';
 import { useModalState } from './hooks/useModalState';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
+import { BottomNav } from './components/navigation/BottomNav';
+import { MobileDrawer } from './components/navigation/MobileDrawer';
 import { AppModals } from './components/AppModals';
 import { syncPendingHighlights } from './services/offlineDb';
 
@@ -45,10 +47,25 @@ const MainApp: React.FC = () => {
 
   // Active navigation & source view selection
   const [currentTab, setCurrentTab] = useState<string>('home');
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [articlesInitialCategory, setArticlesInitialCategory] = useState<string>('all');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [forceReaderMode, setForceReaderMode] = useState(false);
   const [searchQuery] = useState('');
+
+  const theme: 'light' | 'dark' = settings.theme === 'dark' ? 'dark' : 'light';
+
+  const toggleTheme = () => {
+    updateSetting('theme', settings.theme === 'dark' ? 'light' : 'dark');
+  };
+
+  const handleSelectTab = (tab: string) => {
+    if (tab !== 'articles') setArticlesInitialCategory('all');
+    else setArticlesInitialCategory('all');
+    setCurrentTab(tab);
+    setSelectedSourceId(null);
+    setForceReaderMode(false);
+  };
 
   // Core data hooks & mutations
   const {
@@ -425,7 +442,7 @@ const MainApp: React.FC = () => {
         onOpenSaveArticle={() => modals.openCreateWithTab('article')}
         onOpenImport={() => modals.openImport()}
         streakStats={streakStats}
-        onSelectTab={(tab) => setCurrentTab(tab)}
+        onSelectTab={handleSelectTab}
       />
 
       {sessionExpired && (
@@ -443,16 +460,10 @@ const MainApp: React.FC = () => {
       )}
 
       {/* 2. Body: Sidebar + Main Stream */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden pb-16 md:pb-0">
         <Sidebar
           currentTab={currentTab}
-          onSelectTab={(tab) => {
-            if (tab !== 'articles') setArticlesInitialCategory('all');
-            else setArticlesInitialCategory('all');
-            setCurrentTab(tab);
-            setSelectedSourceId(null);
-            setForceReaderMode(false);
-          }}
+          onSelectTab={handleSelectTab}
           reviewCount={reviewQueue.length}
           streakStats={streakStats}
           settings={settings}
@@ -464,7 +475,27 @@ const MainApp: React.FC = () => {
         </Suspense>
       </div>
 
-      {/* 3. Global Modals Orchestrator */}
+      {/* 3. Mobile Navigation Shell */}
+      <BottomNav
+        currentTab={currentTab}
+        onSelectTab={handleSelectTab}
+        onOpenDrawer={() => setIsMobileDrawerOpen(true)}
+        reviewCount={reviewQueue.length}
+      />
+
+      <MobileDrawer
+        isOpen={isMobileDrawerOpen}
+        onClose={() => setIsMobileDrawerOpen(false)}
+        currentTab={currentTab}
+        onSelectTab={(tab) => {
+          handleSelectTab(tab);
+          setIsMobileDrawerOpen(false);
+        }}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+
+      {/* 4. Global Modals Orchestrator */}
       <AppModals
         isCreateModalOpen={modals.isCreateOpen}
         createModalInitialTab={modals.createInitialTab}
@@ -509,10 +540,8 @@ const MainApp: React.FC = () => {
         onOpenCreateModal={() => modals.openCreateWithTab('highlight')}
         onOpenImportModal={() => modals.openImport()}
         onOpenExportModal={() => modals.openExport()}
-        onOpenReviewTab={() => setCurrentTab('review')}
-        onToggleTheme={() =>
-          updateSetting('theme', settings.theme === 'dark' ? 'light' : 'dark')
-        }
+        onOpenReviewTab={() => handleSelectTab('review')}
+        onToggleTheme={toggleTheme}
         activeShareHighlight={modals.activeShareHighlight}
         onCloseShareModal={modals.closeShare}
         activeAskAiHighlight={modals.activeAskAiHighlight}

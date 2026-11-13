@@ -121,7 +121,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Command Palette"
-      className="fixed inset-0 z-50 flex items-start justify-center pt-24 p-4 bg-black/50 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-6 sm:pt-24 p-3 sm:p-4 bg-black/50 backdrop-blur-xs"
     >
       <div className="w-full max-w-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
         {/* Input */}
@@ -133,7 +133,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             placeholder="Search articles, highlights, or commands... (Esc to close)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 bg-transparent border-0 outline-hidden text-sm text-neutral-900 dark:text-white placeholder-neutral-400"
+            className="flex-1 bg-transparent border-0 outline-hidden text-sm text-neutral-900 dark:text-white placeholder-neutral-400 min-h-[36px]"
           />
           <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-300 dark:border-neutral-700 text-neutral-500">
             ESC
@@ -155,7 +155,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onClose();
                     onSelectSource(s.id);
                   }}
-                  className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                  className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors min-h-[44px]"
                 >
                   <div className="flex items-center gap-2.5 truncate">
                     <BookOpen className="w-4 h-4 text-teal-700 shrink-0" />
@@ -178,7 +178,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               {filteredHighlights.map((h) => (
                 <div
                   key={h.id}
-                  className="p-2.5 rounded-xl bg-amber-50/50 dark:bg-neutral-800/50 border border-amber-200/40 dark:border-neutral-700 text-xs space-y-1"
+                  className="p-3 rounded-xl bg-amber-50/50 dark:bg-neutral-800/50 border border-amber-200/40 dark:border-neutral-700 text-xs space-y-1"
                 >
                   <p className="font-serif italic text-neutral-800 dark:text-neutral-200 line-clamp-2">
                     “{h.content}”
@@ -204,7 +204,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <button
                     key={item.id}
                     onClick={item.action}
-                    className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                    className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors min-h-[44px]"
                   >
                     <div className="flex items-center gap-2.5">
                       <Icon className="w-4 h-4 text-teal-700 dark:text-teal-400" />

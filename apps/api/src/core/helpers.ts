@@ -2,6 +2,12 @@ import { Bindings } from '../types';
 import { getSettings } from './settings';
 
 export const WORKERS_AI_DAILY_LIMIT = 8500; // Safe cap below 10,000 Neurons/day Free Tier
+export const GEMINI_TEXT_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+] as const;
 const memoryAiUsage = new Map<string, number>();
 
 export async function resolveGeminiKey(

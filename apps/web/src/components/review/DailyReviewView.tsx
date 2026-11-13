@@ -217,47 +217,47 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] bg-[#faf9f5] dark:bg-[#121214] select-none overflow-y-auto">
       {/* 1. Review Top Nav Tabs */}
-      <div className="h-12 border-b border-neutral-200/70 dark:border-neutral-800 px-6 flex items-center justify-between shrink-0 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md sticky top-0 z-20">
-        <div className="flex items-center gap-6">
+      <div className="min-h-12 border-b border-neutral-200/70 dark:border-neutral-800 px-3 sm:px-6 py-1 sm:py-0 flex items-center justify-between shrink-0 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md sticky top-0 z-20 gap-2">
+        <div className="flex items-center gap-2 sm:gap-6 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('daily')}
-            className={`text-xs font-bold transition-colors pb-1 border-b-2 ${
+            className={`min-h-[44px] flex items-center text-xs font-bold transition-colors pb-1 border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === 'daily'
                 ? 'border-teal-800 text-teal-800 dark:text-teal-400'
                 : 'border-transparent text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
             }`}
           >
-            Daily review
+            Daily<span className="hidden sm:inline">&nbsp;review</span>
           </button>
           <button
             onClick={() => setActiveTab('streaks')}
-            className={`text-xs font-bold transition-colors pb-1 border-b-2 ${
+            className={`min-h-[44px] flex items-center text-xs font-bold transition-colors pb-1 border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === 'streaks'
                 ? 'border-teal-800 text-teal-800 dark:text-teal-400'
                 : 'border-transparent text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
             }`}
           >
-            Streaks & History
+            Streaks<span className="hidden sm:inline">&nbsp;& History</span>
           </button>
           <button
             onClick={() => setActiveTab('custom')}
-            className={`text-xs font-bold transition-colors pb-1 border-b-2 ${
+            className={`min-h-[44px] flex items-center text-xs font-bold transition-colors pb-1 border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === 'custom'
                 ? 'border-teal-800 text-teal-800 dark:text-teal-400'
                 : 'border-transparent text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
             }`}
           >
-            Custom Review
+            Custom<span className="hidden sm:inline">&nbsp;Review</span>
           </button>
         </div>
 
         {/* Progress Tracker / Cloze Toggle / Exit */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {activeTab === 'daily' && activeQueue.length > 0 && !isCompleted && (
             <>
               <button
                 onClick={toggleClozeMode}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
+                className={`min-h-[36px] flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
                   clozeMode
                     ? 'bg-teal-800 text-white border-teal-800'
                     : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700'
@@ -265,16 +265,17 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
                 title="Toggle Cloze / Active Recall mode"
               >
                 {clozeMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>Cloze {clozeMode ? 'On' : 'Off'}</span>
+                <span className="hidden xs:inline">Cloze</span>
+                <span>{clozeMode ? 'On' : 'Off'}</span>
               </button>
-              <span className="text-xs font-medium text-neutral-500">
-                {currentIndex + 1} of {activeQueue.length}
+              <span className="text-[11px] sm:text-xs font-medium text-neutral-500 whitespace-nowrap">
+                {currentIndex + 1}/{activeQueue.length}
               </span>
             </>
           )}
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             title="Exit review"
           >
             <X className="w-4 h-4" />
@@ -337,7 +338,7 @@ export const DailyReviewView: React.FC<DailyReviewViewProps> = ({
           ) : (
             /* Active SRS Card View */
             <div className="flex-1 flex flex-col justify-between">
-              <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-3xl mx-auto w-full">
+              <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 max-w-3xl mx-auto w-full">
                 {currentHighlight && (
                   <ReviewCard
                     highlight={currentHighlight}

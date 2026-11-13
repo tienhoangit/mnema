@@ -1,6 +1,6 @@
 import { Bindings, HighlightWithSource } from '../../types';
 import { buildFtsPrefixQuery, toAsciiVietnamese } from '../../core/text';
-import { resolveGeminiKey } from '../../core/helpers';
+import { GEMINI_TEXT_MODELS, resolveGeminiKey } from '../../core/helpers';
 import {
   buildLocalSemanticVector,
   computeContentHash,
@@ -239,10 +239,10 @@ export async function generateLibraryText(
   customApiKey?: string
 ): Promise<string> {
   const apiKey = await resolveGeminiKey(env, customApiKey);
+  let geminiError: string | null = null;
 
   if (apiKey) {
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-    for (const model of models) {
+    for (const model of GEMINI_TEXT_MODELS) {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
         {
@@ -258,8 +258,10 @@ export async function generateLibraryText(
         const data = (await res.json()) as GeminiTextResponse;
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) return text;
-      } else if (res.status !== 404) {
-        break;
+      } else {
+        const errBody = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        geminiError = `Gemini API error (${res.status}): ${errBody?.error?.message || res.statusText}`;
+        if (res.status !== 404) break;
       }
     }
   }
@@ -273,6 +275,10 @@ export async function generateLibraryText(
     } catch (e) {
       console.warn('Workers AI error:', e instanceof Error ? e.message : e);
     }
+  }
+
+  if (geminiError) {
+    throw new Error(geminiError);
   }
 
   throw new Error('Please configure a free Google Gemini API Key in Settings to use Library AI.');

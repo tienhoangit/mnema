@@ -310,8 +310,31 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
 
       {/* Main Stream */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* Mobile Category Navigation (< 768px) */}
+        <div className="md:hidden overflow-x-auto no-scrollbar flex items-center gap-2 p-3 border-b border-neutral-200/60 dark:border-neutral-800/60 shrink-0 bg-white/50 dark:bg-neutral-900/50">
+          {categories.map((c) => {
+            const Icon = c.icon;
+            const active = activeCategory === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setActiveCategory(c.id)}
+                className={`min-h-[44px] flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
+                  active
+                    ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 font-bold border border-teal-700/30'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{c.label}</span>
+                <span className="text-[10px] text-neutral-400 font-mono">({c.count})</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Top Header */}
-        <div className="p-4 border-b border-neutral-200/60 dark:border-neutral-800/60 flex flex-wrap items-center justify-between gap-3">
+        <div className="p-3 sm:p-4 border-b border-neutral-200/60 dark:border-neutral-800/60 flex flex-wrap items-center justify-between gap-3">
           {activeCategory === 'rss' ? (
             <div className="flex items-center justify-between w-full gap-3">
               <div className="flex items-center gap-2">
@@ -323,7 +346,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
               <button
                 onClick={handleSyncAllFeeds}
                 disabled={isSyncingAll || feeds.length === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold disabled:opacity-50"
               >
                 {isSyncingAll ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -342,21 +365,14 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search articles..."
-                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-xs text-neutral-900 dark:text-white border-transparent focus:border-teal-700 focus:outline-hidden"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white border-transparent focus:border-teal-700 focus:outline-hidden"
                 />
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setActiveCategory('rss')}
-                  className="md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-semibold"
-                >
-                  <Rss className="w-3.5 h-3.5 text-orange-500" />
-                  <span>RSS ({feeds.length})</span>
-                </button>
-                <button
                   onClick={onOpenSaveArticle}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                  className="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Save Article</span>
@@ -368,7 +384,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
 
         {/* Body */}
         {activeCategory === 'rss' ? (
-          <div className="flex-1 overflow-y-auto p-6 space-y-5 max-w-3xl">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 space-y-5 max-w-3xl">
             <form onSubmit={handleAddFeed} className="flex flex-wrap items-center gap-2">
               <input
                 type="url"
@@ -381,7 +397,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
               <button
                 type="submit"
                 disabled={isAddingFeed}
-                className="px-4 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
               >
                 {isAddingFeed ? (
                   <>
@@ -442,7 +458,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                       <button
                         onClick={() => handleSyncSingleFeed(feed.id)}
                         disabled={syncingFeedId === feed.id}
-                        className="p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300"
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300"
                         title="Sync feed now"
                       >
                         <RefreshCw
@@ -451,7 +467,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                       </button>
                       <button
                         onClick={() => handleDeleteFeed(feed.id)}
-                        className="p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-red-50 text-neutral-400 hover:text-red-600"
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-red-50 text-neutral-400 hover:text-red-600"
                         title="Unsubscribe"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -463,7 +479,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
             )}
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 space-y-3">
             {filteredArticles.length === 0 ? (
               <EmptyState
                 icon={FileText}
@@ -484,7 +500,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                   }}
                   onMouseEnter={() => setFocusedIndex(idx)}
                   onClick={() => onSelectArticle(art.id)}
-                  className={`p-4 rounded-2xl border bg-white dark:bg-neutral-900 transition-all cursor-pointer group shadow-2xs flex items-center justify-between gap-4 ${
+                  className={`p-4 rounded-2xl border bg-white dark:bg-neutral-900 transition-all cursor-pointer group shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                     isFocused
                       ? 'border-teal-700/70 ring-2 ring-teal-600/25 dark:ring-teal-500/25'
                       : 'border-neutral-200/80 dark:border-neutral-800 hover:border-teal-700/60'
@@ -510,14 +526,14 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
 
                   <div
                     className={`flex items-center gap-1 transition-opacity ${
-                      isFav ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                      isFav ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100'
                     }`}
                     onClick={(e) => e.stopPropagation()}
                   >
                     {onToggleFavorite && (
                       <button
                         onClick={() => onToggleFavorite(art.id, !isFav)}
-                        className={`p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
+                        className={`min-w-[44px] min-h-[44px] flex items-center justify-center p-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
                           isFav
                             ? 'text-amber-500'
                             : 'text-neutral-400 hover:text-amber-500'
@@ -529,14 +545,14 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                     )}
                     <button
                       onClick={() => onUpdateStatus(art.id, 'later')}
-                      className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       title="Read later (l)"
                     >
                       <Clock className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onUpdateStatus(art.id, 'archive')}
-                      className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       title="Archive (e)"
                     >
                       <Archive className="w-4 h-4" />
@@ -545,7 +561,7 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
                       onClick={() => {
                         if (confirm(`Delete "${art.name}"?`)) onDeleteArticle(art.id, art.name);
                       }}
-                      className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2.5 rounded-xl text-neutral-400 hover:text-red-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       title="Delete"
                     >
                       <Trash2 className="w-4 h-4" />

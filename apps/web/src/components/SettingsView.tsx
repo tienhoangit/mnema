@@ -11,6 +11,7 @@ import {
   Mail,
   Send,
   Eye,
+  EyeOff,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -35,6 +36,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenIntegrations,
 }) => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [isKeySaved, setIsKeySaved] = useState(false);
 
   // Daily Review Email Digest State
@@ -44,6 +46,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [digestHourUtc, setDigestHourUtc] = useState(8);
   const [digestCount, setDigestCount] = useState(5);
   const [resendApiKey, setResendApiKey] = useState('');
+  const [showResendKey, setShowResendKey] = useState(false);
   const [fromEmail, setFromEmail] = useState('');
   const [isSavingDigest, setIsSavingDigest] = useState(false);
   const [digestMsg, setDigestMsg] = useState<string | null>(null);
@@ -150,7 +153,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-y-auto p-6 max-w-4xl mx-auto space-y-8 select-none">
+    <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-y-auto p-4 sm:p-6 pb-24 max-w-4xl mx-auto space-y-8 select-none">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 text-teal-800 dark:text-teal-400 font-bold text-xs uppercase tracking-wider mb-1">
@@ -164,7 +167,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Section 1: AI Copilot & Gemini Key */}
-      <section className="p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
+      <section className="p-4 sm:p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
@@ -190,11 +193,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </a>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="flex-1 relative">
             <Key className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
-              type="password"
+              type={showGeminiKey ? 'text' : 'password'}
               value={geminiApiKey}
               onChange={(e) => setGeminiApiKey(e.target.value)}
               placeholder={
@@ -202,12 +205,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   ? `Saved on server (${settings.gemini_api_key_masked}) — enter new key to replace`
                   : 'Paste your Google Gemini API key (AIzaSy...)...'
               }
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-50 dark:bg-neutral-800 text-xs border border-neutral-200 dark:border-neutral-700 focus:outline-hidden focus:border-teal-700"
+              className="w-full pl-9 pr-11 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 text-xs border border-neutral-200 dark:border-neutral-700 focus:outline-hidden focus:border-teal-700 min-h-[44px]"
             />
+            <button
+              type="button"
+              onClick={() => setShowGeminiKey(!showGeminiKey)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center absolute right-1 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+              title={showGeminiKey ? 'Hide key' : 'Show key'}
+            >
+              {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           </div>
           <button
             onClick={handleSaveApiKey}
-            className="px-4 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors shrink-0"
+            className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors shrink-0 flex items-center justify-center"
           >
             {isKeySaved ? 'Saved!' : 'Save Key'}
           </button>
@@ -215,7 +226,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       {/* Section 2: Daily Review Email Digest */}
-      <section className="p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
+      <section className="p-4 sm:p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/40 text-teal-700 flex items-center justify-center">
@@ -271,17 +282,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <label className="block text-[11px] font-semibold text-neutral-500 mb-1">
                 Resend API Key (re_...)
               </label>
-              <input
-                type="password"
-                value={resendApiKey}
-                onChange={(e) => setResendApiKey(e.target.value)}
-                placeholder={
-                  settings?.resend_api_key_masked
-                    ? `Saved (${settings.resend_api_key_masked}) — leave blank to keep`
-                    : 're_xxxxxxxxx'
-                }
-                className="w-full px-3 py-2 text-xs rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
-              />
+              <div className="relative">
+                <input
+                  type={showResendKey ? 'text' : 'password'}
+                  value={resendApiKey}
+                  onChange={(e) => setResendApiKey(e.target.value)}
+                  placeholder={
+                    settings?.resend_api_key_masked
+                      ? `Saved (${settings.resend_api_key_masked}) — leave blank to keep`
+                      : 're_xxxxxxxxx'
+                  }
+                  className="w-full pl-3 pr-11 py-2 text-xs rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 min-h-[44px]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResendKey(!showResendKey)}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center absolute right-1 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+                  title={showResendKey ? 'Hide key' : 'Show key'}
+                >
+                  {showResendKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <div>
@@ -355,11 +376,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5">
             <button
               type="submit"
               disabled={isSavingDigest}
-              className="px-4 py-2 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs"
+              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs flex items-center justify-center"
             >
               {isSavingDigest ? 'Saving...' : 'Save Digest Settings'}
             </button>
@@ -368,7 +389,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="button"
               onClick={handlePreviewDigest}
               disabled={isLoadingPreview}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-semibold hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              className="w-full sm:w-auto min-h-[44px] flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-semibold hover:bg-neutral-50 dark:hover:bg-neutral-800"
             >
               {isLoadingPreview ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -382,7 +403,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="button"
               onClick={handleSendTestDigest}
               disabled={isSendingTest || !digestEmail.trim()}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-semibold disabled:opacity-50"
+              className="w-full sm:w-auto min-h-[44px] flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-semibold disabled:opacity-50"
             >
               {isSendingTest ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -416,7 +437,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       {/* Section 3: Library Maintenance Tools */}
-      <section className="p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
+      <section className="p-4 sm:p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/40 text-teal-800 flex items-center justify-center">
             <Wrench className="w-4 h-4" />
@@ -434,7 +455,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
           <button
             onClick={onOpenToolsModal}
-            className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-teal-700/60 text-left transition-colors bg-neutral-50/50 dark:bg-neutral-800/40"
+            className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-teal-700/60 text-left transition-colors bg-neutral-50/50 dark:bg-neutral-800/40 min-h-[44px]"
           >
             <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
               Merge Duplicates
@@ -446,7 +467,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             onClick={onOpenToolsModal}
-            className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-teal-700/60 text-left transition-colors bg-neutral-50/50 dark:bg-neutral-800/40"
+            className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-teal-700/60 text-left transition-colors bg-neutral-50/50 dark:bg-neutral-800/40 min-h-[44px]"
           >
             <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
               Remove Empty Sources
@@ -456,7 +477,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             onClick={onOpenToolsModal}
-            className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-teal-700/60 text-left transition-colors bg-neutral-50/50 dark:bg-neutral-800/40"
+            className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-teal-700/60 text-left transition-colors bg-neutral-50/50 dark:bg-neutral-800/40 min-h-[44px]"
           >
             <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
               Trash Tiny Snippets
@@ -467,7 +488,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       {/* Section 4: Import, Export & Integrations */}
-      <section className="p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
+      <section className="p-4 sm:p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 flex items-center justify-center">
@@ -486,23 +507,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {onOpenIntegrations && (
             <button
               onClick={onOpenIntegrations}
-              className="px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-xs font-semibold hover:bg-purple-100"
+              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-xs font-semibold hover:bg-purple-100 flex items-center"
             >
               Open Integrations →
             </button>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3 pt-1">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-1">
           <button
             onClick={onOpenImportModal}
-            className="flex-1 min-w-[200px] py-2.5 px-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-semibold transition-colors"
+            className="flex-1 min-w-[200px] min-h-[44px] py-2.5 px-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-semibold transition-colors flex items-center justify-center"
           >
             Import (Kindle / Readwise / CSV / PDF)
           </button>
           <button
             onClick={onOpenExportModal}
-            className="flex-1 min-w-[200px] py-2.5 px-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+            className="flex-1 min-w-[200px] min-h-[44px] py-2.5 px-4 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export Library (Obsidian / MD / CSV)</span>
@@ -511,7 +532,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       {/* Section 5: Trash Bin & Recovery */}
-      <section className="p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
+      <section className="p-4 sm:p-6 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-500 flex items-center justify-center">
@@ -530,7 +551,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {onOpenTrash && (
             <button
               onClick={onOpenTrash}
-              className="px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-semibold transition-colors flex items-center gap-1.5"
+              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
             >
               <Trash2 className="w-3.5 h-3.5 text-red-500" />
               <span>Open Trash Bin</span>

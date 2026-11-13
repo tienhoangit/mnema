@@ -143,7 +143,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-y-auto bg-[#faf9f5] dark:bg-[#121214] select-none">
       {/* Top Header */}
-      <header className="px-6 py-4 border-b border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md sticky top-0 z-20 space-y-4">
+      <header className="px-4 sm:px-6 py-4 border-b border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md sticky top-0 z-20 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
@@ -156,39 +156,39 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
 
           {/* Mode Switcher */}
-          <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl text-xs font-semibold">
+          <div className="grid grid-cols-3 sm:flex items-center w-full sm:w-auto bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl text-xs font-semibold gap-1">
             <button
               onClick={() => setActiveMode('keyword')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
+              className={`flex items-center justify-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-xl transition-all ${
                 activeMode === 'keyword'
-                  ? 'bg-white dark:bg-neutral-700 text-teal-800 dark:text-teal-300 shadow-2xs'
+                  ? 'bg-white dark:bg-neutral-700 text-teal-800 dark:text-teal-300 shadow-2xs font-bold'
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
               }`}
             >
-              <Search className="w-3.5 h-3.5" />
-              <span>Keyword (FTS5)</span>
+              <Search className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Keyword<span className="hidden sm:inline"> (FTS5)</span></span>
             </button>
             <button
               onClick={() => setActiveMode('semantic')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
+              className={`flex items-center justify-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-xl transition-all ${
                 activeMode === 'semantic'
-                  ? 'bg-white dark:bg-neutral-700 text-teal-800 dark:text-teal-300 shadow-2xs'
+                  ? 'bg-white dark:bg-neutral-700 text-teal-800 dark:text-teal-300 shadow-2xs font-bold'
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
               }`}
             >
-              <Brain className="w-3.5 h-3.5 text-purple-600" />
-              <span>Semantic AI</span>
+              <Brain className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+              <span className="truncate">Semantic<span className="hidden sm:inline"> AI</span></span>
             </button>
             <button
               onClick={() => setActiveMode('ask_ai')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
+              className={`flex items-center justify-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-xl transition-all ${
                 activeMode === 'ask_ai'
-                  ? 'bg-white dark:bg-neutral-700 text-teal-800 dark:text-teal-300 shadow-2xs'
+                  ? 'bg-white dark:bg-neutral-700 text-teal-800 dark:text-teal-300 shadow-2xs font-bold'
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Ask Library AI</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span className="truncate">Ask AI</span>
             </button>
           </div>
         </div>
@@ -221,7 +221,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             </div>
 
             {activeMode === 'keyword' ? (
-              <div className="flex items-center gap-1 text-xs">
+              <div className="overflow-x-auto no-scrollbar flex items-center gap-1.5 text-xs flex-nowrap py-1">
                 {[
                   { id: 'all', label: 'All' },
                   { id: 'sources', label: 'Sources' },
@@ -231,7 +231,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   <button
                     key={f.id}
                     onClick={() => setFilterType(f.id)}
-                    className={`px-3 py-1.5 rounded-xl font-medium transition-colors ${
+                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl font-medium whitespace-nowrap transition-colors flex items-center justify-center ${
                       filterType === f.id
                         ? 'bg-teal-800 text-white font-semibold'
                         : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200'
@@ -251,7 +251,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 <button
                   onClick={handleSyncSemanticIndex}
                   disabled={isSyncingIndex}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-xs font-semibold hover:bg-neutral-50"
+                  className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-xs font-semibold hover:bg-neutral-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncingIndex ? 'animate-spin' : ''}`} />
                   <span>{isSyncingIndex ? 'Indexing...' : 'Sync AI Index'}</span>
@@ -263,7 +263,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
       </header>
 
       {/* Main Content */}
-      <main className="p-6 max-w-4xl mx-auto w-full flex-1">
+      <main className="p-4 sm:p-6 pb-24 max-w-4xl mx-auto w-full flex-1">
         {activeMode === 'keyword' && (
           <div>
             {isLoading && (
@@ -374,10 +374,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                     e.stopPropagation();
                                     onAskAiHighlight(hl);
                                   }}
-                                  className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-purple-600 transition-colors"
+                                  className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-purple-600 transition-colors"
                                   title="Ask AI"
                                 >
-                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <Sparkles className="w-4 h-4" />
                                 </button>
                               )}
                               {onShareHighlight && (
@@ -387,10 +387,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                     e.stopPropagation();
                                     onShareHighlight(hl);
                                   }}
-                                  className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-teal-700 transition-colors"
+                                  className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-teal-700 transition-colors"
                                   title="Share Quote"
                                 >
-                                  <Share2 className="w-3.5 h-3.5" />
+                                  <Share2 className="w-4 h-4" />
                                 </button>
                               )}
                             </div>
@@ -498,10 +498,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                   e.stopPropagation();
                                   onAskAiHighlight(hl);
                                 }}
-                                className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-purple-600 transition-colors"
+                                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-purple-600 transition-colors"
                                 title="Ask AI"
                               >
-                                <Sparkles className="w-3.5 h-3.5" />
+                                <Sparkles className="w-4 h-4" />
                               </button>
                             )}
                             {onShareHighlight && (
@@ -511,10 +511,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                   e.stopPropagation();
                                   onShareHighlight(hl);
                                 }}
-                                className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-teal-700 transition-colors"
+                                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-teal-700 transition-colors"
                                 title="Share Quote"
                               >
-                                <Share2 className="w-3.5 h-3.5" />
+                                <Share2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>

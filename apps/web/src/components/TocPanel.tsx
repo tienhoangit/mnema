@@ -55,7 +55,7 @@ export const TocPanel: React.FC<TocPanelProps> = ({ contentHtml, contentRef }) =
       {/* Floating Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-1.5 px-3 py-2 rounded-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 shadow-md text-xs font-semibold text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all hover:scale-105"
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 mb-[env(safe-area-inset-bottom)] md:mb-0 z-30 flex items-center gap-1.5 px-3.5 min-h-[44px] rounded-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 shadow-md text-xs font-semibold text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all hover:scale-105"
         title="Table of Contents / Outline"
       >
         <List className="w-4 h-4 text-teal-700 dark:text-teal-400" />
@@ -64,7 +64,14 @@ export const TocPanel: React.FC<TocPanelProps> = ({ contentHtml, contentRef }) =
 
       {/* Drawer */}
       {isOpen && (
-        <div className="fixed inset-y-0 right-0 z-40 w-72 bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-2xl p-5 flex flex-col animate-in slide-in-from-right duration-200">
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      {isOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 w-[85vw] max-w-72 bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-2xl p-5 flex flex-col animate-in slide-in-from-right duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
             <div className="flex items-center gap-2 font-bold text-sm text-neutral-800 dark:text-white">
               <List className="w-4 h-4 text-teal-700" />
@@ -72,7 +79,8 @@ export const TocPanel: React.FC<TocPanelProps> = ({ contentHtml, contentRef }) =
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+              aria-label="Close table of contents"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
             >
               <X className="w-4 h-4" />
             </button>
@@ -84,7 +92,7 @@ export const TocPanel: React.FC<TocPanelProps> = ({ contentHtml, contentRef }) =
                 key={h.id}
                 onClick={() => scrollToHeading(h.id)}
                 style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
-                className="w-full text-left py-1.5 pr-2 rounded-lg text-xs hover:bg-teal-50 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-teal-900 dark:hover:text-teal-300 transition-colors truncate block"
+                className="w-full text-left py-2.5 md:py-1.5 pr-2 rounded-lg text-xs hover:bg-teal-50 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-teal-900 dark:hover:text-teal-300 transition-colors truncate block"
               >
                 {h.text}
               </button>

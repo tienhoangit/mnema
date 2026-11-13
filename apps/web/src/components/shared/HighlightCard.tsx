@@ -80,7 +80,7 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
     >
       {/* 1. Source Header (Optional) */}
       {!hideSourceHeader && (
-        <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
           <div
             onClick={() => onSelectSource && onSelectSource(highlight.source_id)}
             className={`flex items-center gap-2.5 min-w-0 ${
@@ -107,20 +107,22 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
           </div>
 
           {/* Action Pills */}
-          <div className="flex items-center gap-1 opacity-75 group-hover:opacity-100 transition-opacity shrink-0">
+          <div className="flex items-center gap-1 opacity-100 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity shrink-0 flex-wrap">
             {onToggleSelect && (
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={onToggleSelect}
-                className="w-3.5 h-3.5 mr-1 rounded text-teal-800 focus:ring-teal-700"
-              />
+              <label className="min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={onToggleSelect}
+                  className="w-4 h-4 rounded text-teal-800 focus:ring-teal-700"
+                />
+              </label>
             )}
 
             {onToggleFavorite && (
               <button
                 onClick={() => onToggleFavorite(highlight)}
-                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs transition-colors ${
                   highlight.favorite
                     ? 'text-red-500 fill-red-500'
                     : 'text-neutral-400 hover:text-red-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
@@ -128,7 +130,7 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                 title="Favorite"
               >
                 <Heart
-                  className={`w-3.5 h-3.5 ${highlight.favorite ? 'fill-red-500 text-red-500' : ''}`}
+                  className={`w-4 h-4 ${highlight.favorite ? 'fill-red-500 text-red-500' : ''}`}
                 />
               </button>
             )}
@@ -136,40 +138,40 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
             {onAskAi && (
               <button
                 onClick={() => onAskAi(highlight)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                 title="Ask AI Copilot"
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-4 h-4" />
               </button>
             )}
 
             {onShare && (
               <button
                 onClick={() => onShare(highlight)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                 title="Share Quote Card"
               >
-                <Share2 className="w-3.5 h-3.5" />
+                <Share2 className="w-4 h-4" />
               </button>
             )}
 
             {onSendEmail && (
               <button
                 onClick={() => onSendEmail(highlight)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                 title="Send Highlight via Email"
               >
-                <Mail className="w-3.5 h-3.5" />
+                <Mail className="w-4 h-4" />
               </button>
             )}
 
             {onUpdateNote && (
               <button
                 onClick={() => setIsEditingNote((prev) => !prev)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-amber-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-amber-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                 title="Edit Personal Note"
               >
-                <Edit3 className="w-3.5 h-3.5" />
+                <Edit3 className="w-4 h-4" />
               </button>
             )}
 
@@ -178,10 +180,10 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                 onClick={() => {
                   if (confirm('Delete this highlight?')) onDelete(highlight.id);
                 }}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-red-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-red-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                 title="Delete"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -190,59 +192,59 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
 
       {/* When hideSourceHeader is true (e.g. inside SourceView), show minimal action bar */}
       {hideSourceHeader && (
-        <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
           {highlight.location ? (
             <span className="text-[11px] font-mono text-neutral-400">Loc {highlight.location}</span>
           ) : (
             <span />
           )}
 
-          <div className="flex items-center gap-1 opacity-75 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-100 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity flex-wrap">
             {onToggleFavorite && (
               <button
                 onClick={() => onToggleFavorite(highlight)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-red-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-red-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 title="Favorite"
               >
                 <Heart
-                  className={`w-3.5 h-3.5 ${highlight.favorite ? 'fill-red-500 text-red-500' : ''}`}
+                  className={`w-4 h-4 ${highlight.favorite ? 'fill-red-500 text-red-500' : ''}`}
                 />
               </button>
             )}
             {onAskAi && (
               <button
                 onClick={() => onAskAi(highlight)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-teal-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-teal-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 title="Ask AI"
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-4 h-4" />
               </button>
             )}
             {onShare && (
               <button
                 onClick={() => onShare(highlight)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 title="Share"
               >
-                <Share2 className="w-3.5 h-3.5" />
+                <Share2 className="w-4 h-4" />
               </button>
             )}
             {onSendEmail && (
               <button
                 onClick={() => onSendEmail(highlight)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-teal-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-teal-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 title="Send Highlight via Email"
               >
-                <Mail className="w-3.5 h-3.5" />
+                <Mail className="w-4 h-4" />
               </button>
             )}
             {onUpdateNote && (
               <button
                 onClick={() => setIsEditingNote((prev) => !prev)}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-amber-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-amber-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 title="Edit Note"
               >
-                <Edit3 className="w-3.5 h-3.5" />
+                <Edit3 className="w-4 h-4" />
               </button>
             )}
             {onDelete && (
@@ -250,10 +252,10 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                 onClick={() => {
                   if (confirm('Delete this highlight?')) onDelete(highlight.id);
                 }}
-                className="p-1.5 rounded-lg text-xs text-neutral-400 hover:text-red-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl text-xs text-neutral-400 hover:text-red-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 title="Delete"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             )}
           </div>

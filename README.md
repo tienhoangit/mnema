@@ -108,5 +108,29 @@ npx wrangler pages deploy apps/web/dist --project-name=mnema
 
 ---
 
+## 🛡️ Chính sách kỹ thuật & Hướng dẫn bảo trì (Engineering Policies & Guidelines)
+
+Để đảm bảo dự án vận hành tối ưu trên Cloudflare Workers Free Tier và duy trì tính bảo mật nghiêm ngặt, tất cả các lập trình viên và AI agent phải tuân thủ các tài liệu kỹ thuật sau:
+
+- **[Tài liệu Chính sách Kỹ thuật Toàn diện (Engineering Policies & Guidelines)](docs/ENGINEERING_POLICIES_AND_GUIDELINES.md)**:
+  - **Kiến trúc Monorepo**: Trách nhiệm thư mục (`packages/shared`, `apps/api/src/core/`, `apps/api/src/features/*`, `apps/web/src/services/api/`), quy tắc chống phụ thuộc vòng và cô lập domain.
+  - **Bảo mật & Phòng thủ**: Bắt buộc `safeFetch` chống SSRF, xác thực fail-closed (`apiKeyMiddleware`, OAuth 2.1, Access JWT), khử độc HTML (`sanitizeHtml`/DOMPurify), che giấu token nhạy cảm trong `user_settings`, CSP và header bảo mật.
+  - **Tối ưu Cloudflare Workers Runtime**: Giới hạn CPU 10ms (phân tích feed RSS cắt lát bằng regex), ngân sách neuron Workers AI (`WORKERS_AI_DAILY_LIMIT = 8500`) kèm fallback `local_trigram`, cơ chế thử lại model Gemini (`GEMINI_TEXT_MODELS`), migrations D1 tăng dần phi phá hủy (`0001`–`0011`), sao lưu định kỳ hàng ngày lên Cloudflare R2.
+- **[Quy tắc dành cho AI Agent (AI Agent Guidelines & Contract)](AGENTS.md)**: Bản tóm tắt súc tích các ràng buộc kỹ thuật cốt lõi dành cho các trợ lý AI (Cursor, Claude, Copilot, Antigravity, v.v.).
+
+### Bộ lệnh kiểm thử bắt buộc (Verification Suite):
+```bash
+# 1. Kiểm tra kiểu dữ liệu & build toàn bộ monorepo
+npm run build
+
+# 2. Chạy bộ kiểm thử kiểm toán bảo mật (Security Audit Suite)
+npm --workspace=apps/api test
+
+# 3. Chạy toàn bộ kiểm thử tính năng & tương thích (Parity & SRS Suite)
+node apps/api/tests/run_inprocess_tests.mjs
+```
+
+---
+
 *Chúc bạn có một thư viện cá nhân lưu trữ kiến thức đọc tuyệt vời trên Cloudflare!*
 

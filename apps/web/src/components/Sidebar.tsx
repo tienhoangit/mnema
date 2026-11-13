@@ -62,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-56 sm:w-60 border-r border-neutral-200/80 dark:border-neutral-800 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-md flex flex-col h-[calc(100vh-3.5rem)] shrink-0 select-none">
+    <aside className="hidden md:flex w-56 sm:w-60 border-r border-neutral-200/80 dark:border-neutral-800 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-md flex-col h-[calc(100vh-3.5rem)] shrink-0 select-none">
       {/* Navigation Groups */}
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
         {/* Main Section */}

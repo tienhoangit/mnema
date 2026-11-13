@@ -264,11 +264,11 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               fontSize: `${settings.fontSize}px`,
               lineHeight: settings.lineHeight,
             }}
-            className={`mx-auto px-6 py-10 ${settings.fontFamily === 'serif' ? 'font-serif' : 'font-sans'}`}
+            className={`mx-auto px-4 sm:px-6 py-6 sm:py-10 ${settings.fontFamily === 'serif' ? 'font-serif' : 'font-sans'}`}
           >
             {/* Article Header */}
             <div className="mb-8 pb-6 border-b border-neutral-200/60 dark:border-neutral-800/60">
-              <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-3 leading-snug">
+              <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-3 leading-snug break-words">
                 {source.name}
               </h1>
 

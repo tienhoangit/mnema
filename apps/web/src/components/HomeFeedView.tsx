@@ -151,7 +151,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-y-auto">
       {/* 1. Stories Carousel Bar (Instagram-style) */}
-      <section className="px-6 py-3 border-b border-neutral-200/60 dark:border-neutral-800/60 bg-white/40 dark:bg-neutral-900/40 backdrop-blur-xs shrink-0 overflow-x-auto no-scrollbar">
+      <section className="px-4 sm:px-6 py-3 border-b border-neutral-200/60 dark:border-neutral-800/60 bg-white/40 dark:bg-neutral-900/40 backdrop-blur-xs shrink-0 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-4 min-w-max">
           {/* Story 1: Daily Review */}
           <button
@@ -218,9 +218,79 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
       </section>
 
       {/* 2. Main Content 2-Column Grid */}
-      <div className="flex-1 px-6 py-6 max-w-7xl mx-auto w-full flex gap-8 items-start">
+      <div className="flex-1 px-4 sm:px-6 py-4 sm:py-6 pb-24 max-w-7xl mx-auto w-full flex gap-8 items-start">
         {/* Left Column: Feed Stream */}
         <div className="flex-1 w-full max-w-3xl space-y-6">
+          {/* Mobile / Tablet Quick Filters (< 1280px) */}
+          <div className="xl:hidden bg-white dark:bg-neutral-900 p-3 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 shadow-2xs space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                Feed Filters
+              </span>
+              <div className="flex rounded-xl bg-neutral-100 dark:bg-neutral-800 p-0.5 text-xs">
+                <button
+                  onClick={() => setSortBy('recent')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    sortBy === 'recent'
+                      ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-2xs font-bold'
+                      : 'text-neutral-500 hover:text-neutral-800'
+                  }`}
+                >
+                  Recent
+                </button>
+                <button
+                  onClick={() => setSortBy('random')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    sortBy === 'random'
+                      ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-2xs font-bold'
+                      : 'text-neutral-500 hover:text-neutral-800'
+                  }`}
+                >
+                  Random
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto no-scrollbar flex items-center gap-2 pt-1 border-t border-neutral-100 dark:border-neutral-800 text-xs">
+              <button
+                onClick={() => setFilterFavorites(!filterFavorites)}
+                className={`min-h-[38px] px-3 py-1.5 rounded-xl border flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
+                  filterFavorites
+                    ? 'border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 font-bold'
+                    : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-neutral-600 dark:text-neutral-400'
+                }`}
+              >
+                <Heart className={`w-3.5 h-3.5 ${filterFavorites ? 'fill-red-500 text-red-500' : ''}`} />
+                <span>Favorites</span>
+              </button>
+
+              <button
+                onClick={() => setFilterWithNotes(!filterWithNotes)}
+                className={`min-h-[38px] px-3 py-1.5 rounded-xl border flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
+                  filterWithNotes
+                    ? 'border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-bold'
+                    : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-neutral-600 dark:text-neutral-400'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>With Notes</span>
+              </button>
+
+              {['all', 'book', 'article', 'youtube'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setFilterType(t)}
+                  className={`min-h-[38px] px-3 py-1.5 rounded-xl border whitespace-nowrap shrink-0 capitalize transition-colors ${
+                    filterType === t
+                      ? 'border-teal-700/50 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 font-bold'
+                      : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-neutral-600 dark:text-neutral-400'
+                  }`}
+                >
+                  {t === 'all' ? 'All Types' : t}
+                </button>
+              ))}
+            </div>
+          </div>
           {/* Onboarding Checklist Box */}
           {showOnboarding && (
             <div className="rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-xs relative">

@@ -1,5 +1,6 @@
 import { Bindings } from '../../types';
 import {
+  GEMINI_TEXT_MODELS,
   checkWorkersAiBudget,
   recordWorkersAiUsage,
   resolveGeminiKey,
@@ -23,10 +24,10 @@ export async function generateAIResponse(
   customApiKey?: string
 ): Promise<string> {
   const apiKey = await resolveGeminiKey(env, customApiKey);
+  let geminiError: string | null = null;
 
   if (apiKey) {
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-    for (const model of models) {
+    for (const model of GEMINI_TEXT_MODELS) {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
         {
@@ -42,8 +43,10 @@ export async function generateAIResponse(
         const data = (await res.json()) as GeminiResponse;
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) return text;
-      } else if (res.status !== 404) {
-        break;
+      } else {
+        const errBody = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        geminiError = `Gemini API error (${res.status}): ${errBody?.error?.message || res.statusText}`;
+        if (res.status !== 404) break;
       }
     }
   }
@@ -65,6 +68,10 @@ export async function generateAIResponse(
     } else {
       console.warn(`Workers AI daily neuron budget exhausted (${budget.used}/${budget.limit}).`);
     }
+  }
+
+  if (geminiError) {
+    throw new Error(geminiError);
   }
 
   throw new Error(

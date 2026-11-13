@@ -82,16 +82,27 @@ function extractImageFromBlock(block: string, html: string): string | null {
   return imgMatch?.[1] || null;
 }
 
-export function parseFeedXml(xmlText: string, feedUrl: string): ParsedFeed {
+function extractBlocks(xml: string, tagName: 'entry' | 'item', maxBlocks: number): string[] {
+  const regex = new RegExp(`<${tagName}[\\s>][\\s\\S]*?<\\/${tagName}>`, 'gi');
+  const blocks: string[] = [];
+  let match: RegExpExecArray | null;
+  while (blocks.length < maxBlocks && (match = regex.exec(xml)) !== null) {
+    blocks.push(match[0]);
+  }
+  return blocks;
+}
+
+export function parseFeedXml(xmlText: string, feedUrl: string, maxItems = 30): ParsedFeed {
   const trimmed = xmlText.trim();
   const isAtom = /<feed[\s>]/i.test(trimmed) && !/<channel[\s>]/i.test(trimmed);
 
   if (isAtom) {
-    const feedHeader = trimmed.split(/<entry[\s>]/i)[0] || trimmed;
+    const firstEntryIdx = trimmed.search(/<entry[\s>]/i);
+    const feedHeader = firstEntryIdx >= 0 ? trimmed.slice(0, firstEntryIdx) : trimmed;
     const feedTitle = stripTags(extractTag(feedHeader, ['title']) || '') || new URL(feedUrl).hostname;
     const siteUrl = extractAtomLink(feedHeader);
 
-    const entryMatches = trimmed.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
+    const entryMatches = extractBlocks(trimmed, 'entry', maxItems);
     const items: ParsedFeedItem[] = [];
 
     for (const entry of entryMatches) {
@@ -128,11 +139,12 @@ export function parseFeedXml(xmlText: string, feedUrl: string): ParsedFeed {
   }
 
   // RSS 2.0 / RDF
-  const channelHeader = trimmed.split(/<item[\s>]/i)[0] || trimmed;
+  const firstItemIdx = trimmed.search(/<item[\s>]/i);
+  const channelHeader = firstItemIdx >= 0 ? trimmed.slice(0, firstItemIdx) : trimmed;
   const feedTitle = stripTags(extractTag(channelHeader, ['title']) || '') || new URL(feedUrl).hostname;
   const siteUrl = extractTag(channelHeader, ['link']);
 
-  const itemMatches = trimmed.match(/<item[\s>][\s\S]*?<\/item>/gi) || [];
+  const itemMatches = extractBlocks(trimmed, 'item', maxItems);
   const items: ParsedFeedItem[] = [];
 
   for (const item of itemMatches) {

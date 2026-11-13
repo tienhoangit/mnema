@@ -44,9 +44,9 @@ export const SourcesView: React.FC<SourcesViewProps> = ({
   });
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden">
+    <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden select-none">
       {/* Header */}
-      <header className="px-6 py-4 border-b border-neutral-200/70 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-white/40 dark:bg-neutral-900/40 backdrop-blur-xs">
+      <header className="px-4 sm:px-6 py-4 border-b border-neutral-200/70 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 bg-white/40 dark:bg-neutral-900/40 backdrop-blur-xs">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
             Sources & Library ({sources.length})
@@ -57,16 +57,16 @@ export const SourcesView: React.FC<SourcesViewProps> = ({
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-2">
+        <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
           {/* Search */}
-          <div className="relative w-44 sm:w-56">
+          <div className="relative flex-1 sm:w-56 min-w-[140px]">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
               placeholder="Filter sources..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-neutral-100 dark:bg-neutral-800 border-0 text-neutral-900 dark:text-white focus:outline-hidden"
+              className="w-full pl-8 pr-3 py-2 text-xs rounded-xl bg-neutral-100 dark:bg-neutral-800 border-0 text-neutral-900 dark:text-white focus:outline-hidden min-h-[44px] sm:min-h-0"
             />
           </div>
 
@@ -74,7 +74,7 @@ export const SourcesView: React.FC<SourcesViewProps> = ({
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="text-xs px-2.5 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 focus:outline-hidden"
+            className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 focus:outline-hidden min-h-[44px] sm:min-h-0"
           >
             <option value="all">All Types</option>
             <option value="book">Books</option>
@@ -88,7 +88,7 @@ export const SourcesView: React.FC<SourcesViewProps> = ({
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="text-xs px-2.5 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 focus:outline-hidden"
+            className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 focus:outline-hidden min-h-[44px] sm:min-h-0"
           >
             <option value="all">All Statuses</option>
             <option value="reading">Reading</option>
@@ -101,102 +101,190 @@ export const SourcesView: React.FC<SourcesViewProps> = ({
         </div>
       </header>
 
-      {/* Sources Table */}
-      <main className="flex-1 overflow-y-auto p-6">
+      {/* Sources Table / Mobile Cards */}
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24">
         {filtered.length === 0 ? (
           <div className="py-20 text-center text-neutral-400 space-y-2">
             <BookMarked className="w-8 h-8 mx-auto text-neutral-300 dark:text-neutral-700" />
             <p className="text-xs">No matching sources found</p>
           </div>
         ) : (
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 overflow-hidden shadow-xs">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-neutral-50 dark:bg-neutral-800/60 border-b border-neutral-200/60 dark:border-neutral-800 text-neutral-500 font-semibold uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-4">Title & Source</th>
-                  <th className="py-3 px-4">Author</th>
-                  <th className="py-3 px-4">Type</th>
-                  <th className="py-3 px-4">Reading Status</th>
-                  <th className="py-3 px-4 text-center">Highlights</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
-                {filtered.map((s) => (
-                  <tr
-                    key={s.id}
-                    onClick={() => onSelectSource(s.id)}
-                    className="hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40 cursor-pointer transition-colors"
-                  >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        {s.image_url ? (
-                          <img
-                            src={s.image_url}
-                            alt=""
-                            className="w-8 h-10 object-cover rounded shadow-2xs shrink-0"
-                          />
-                        ) : (
-                          <div className="w-8 h-10 rounded bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
-                            <SourceTypeBadge type={s.type} showIconOnly={true} />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-neutral-900 dark:text-white truncate">
-                            {s.name}
-                          </p>
-                          {s.url && (
-                            <span className="text-[10px] text-neutral-400 truncate block">
-                              {new URL(s.url).hostname.replace('www.', '')}
-                            </span>
-                          )}
-                        </div>
+          <>
+            {/* Mobile Card List (< 768px) */}
+            <div className="md:hidden space-y-3">
+              {filtered.map((s) => (
+                <div
+                  key={s.id}
+                  onClick={() => onSelectSource(s.id)}
+                  className="p-4 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 shadow-2xs space-y-3 cursor-pointer hover:border-teal-700/60 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    {s.image_url ? (
+                      <img
+                        src={s.image_url}
+                        alt=""
+                        className="w-10 h-13 object-cover rounded-lg shadow-2xs shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-13 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
+                        <SourceTypeBadge type={s.type} showIconOnly={true} />
                       </div>
-                    </td>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-bold text-sm text-neutral-900 dark:text-white truncate">
+                          {s.name}
+                        </h3>
+                        <span className="font-semibold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 text-[11px] shrink-0">
+                          {s.highlight_count || 0}
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+                        {s.author || '—'}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <SourceTypeBadge type={s.type} />
+                        {s.url && (
+                          <span className="text-[10px] text-neutral-400 truncate max-w-[140px]">
+                            {(() => {
+                              try {
+                                return new URL(s.url).hostname.replace('www.', '');
+                              } catch {
+                                return s.url;
+                              }
+                            })()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
-                    <td className="py-3 px-4 text-neutral-600 dark:text-neutral-400">
-                      {s.author || '—'}
-                    </td>
+                  {/* Mobile Actions: Status selector & Delete button */}
+                  <div
+                    className="flex items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800/80"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <select
+                      value={s.reading_status}
+                      onChange={(e) => onUpdateStatus(s.id, e.target.value as ReadingStatus)}
+                      className="flex-1 min-h-[44px] px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 focus:outline-hidden"
+                    >
+                      <option value="want_to_read">Want to Read</option>
+                      <option value="reading">Reading</option>
+                      <option value="read">Finished</option>
+                      <option value="inbox">Inbox</option>
+                      <option value="later">Later</option>
+                      <option value="archive">Archive</option>
+                    </select>
 
-                    <td className="py-3 px-4">
-                      <SourceTypeBadge type={s.type} />
-                    </td>
+                    <button
+                      onClick={() => onDeleteSource(s.id, s.name)}
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                      title="Delete Source"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={s.reading_status}
-                        onChange={(e) => onUpdateStatus(s.id, e.target.value as ReadingStatus)}
-                        className="text-[11px] px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 focus:outline-hidden"
-                      >
-                        <option value="want_to_read">Want to Read</option>
-                        <option value="reading">Reading</option>
-                        <option value="read">Finished</option>
-                        <option value="inbox">Inbox</option>
-                        <option value="later">Later</option>
-                        <option value="archive">Archive</option>
-                      </select>
-                    </td>
-
-                    <td className="py-3 px-4 text-center">
-                      <span className="font-semibold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 text-[11px]">
-                        {s.highlight_count || 0}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => onDeleteSource(s.id, s.name)}
-                        className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 transition-colors"
-                        title="Delete Source"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
+            {/* Desktop Table (>= 768px) */}
+            <div className="hidden md:block bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 overflow-hidden shadow-xs">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 dark:bg-neutral-800/60 border-b border-neutral-200/60 dark:border-neutral-800 text-neutral-500 font-semibold uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Title & Source</th>
+                    <th className="py-3 px-4">Author</th>
+                    <th className="py-3 px-4">Type</th>
+                    <th className="py-3 px-4">Reading Status</th>
+                    <th className="py-3 px-4 text-center">Highlights</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
+                  {filtered.map((s) => (
+                    <tr
+                      key={s.id}
+                      onClick={() => onSelectSource(s.id)}
+                      className="hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40 cursor-pointer transition-colors"
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          {s.image_url ? (
+                            <img
+                              src={s.image_url}
+                              alt=""
+                              className="w-8 h-10 object-cover rounded shadow-2xs shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-10 rounded bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
+                              <SourceTypeBadge type={s.type} showIconOnly={true} />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-neutral-900 dark:text-white truncate">
+                              {s.name}
+                            </p>
+                            {s.url && (
+                              <span className="text-[10px] text-neutral-400 truncate block">
+                                {(() => {
+                                  try {
+                                    return new URL(s.url).hostname.replace('www.', '');
+                                  } catch {
+                                    return s.url;
+                                  }
+                                })()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-4 text-neutral-600 dark:text-neutral-400">
+                        {s.author || '—'}
+                      </td>
+
+                      <td className="py-3 px-4">
+                        <SourceTypeBadge type={s.type} />
+                      </td>
+
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={s.reading_status}
+                          onChange={(e) => onUpdateStatus(s.id, e.target.value as ReadingStatus)}
+                          className="text-[11px] px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 focus:outline-hidden"
+                        >
+                          <option value="want_to_read">Want to Read</option>
+                          <option value="reading">Reading</option>
+                          <option value="read">Finished</option>
+                          <option value="inbox">Inbox</option>
+                          <option value="later">Later</option>
+                          <option value="archive">Archive</option>
+                        </select>
+                      </td>
+
+                      <td className="py-3 px-4 text-center">
+                        <span className="font-semibold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 text-[11px]">
+                          {s.highlight_count || 0}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => onDeleteSource(s.id, s.name)}
+                          className="min-h-[36px] min-w-[36px] p-1.5 rounded-lg text-neutral-400 hover:text-red-600 transition-colors inline-flex items-center justify-center"
+                          title="Delete Source"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </main>
     </div>

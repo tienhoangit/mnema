@@ -1,4 +1,5 @@
 import { Bindings } from '../../types';
+import { GEMINI_TEXT_MODELS } from '../../core/helpers';
 import { getSettings } from '../../core/settings';
 
 export type OcrMode = 'highlights_only' | 'full_page';
@@ -102,10 +103,9 @@ If no markings are visible, extract the main readable paragraphs cleanly, fixing
 Return ONLY a valid JSON array of strings (one string per quote/passage). Example: ["First quote...", "Second quote..."]`
       : `You are an expert book page OCR assistant. Transcribe all readable text from this book page cleanly in reading order, fixing broken hyphenated line wraps and preserving paragraph breaks. Return ONLY the transcribed plain text.`;
 
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
   let lastError = 'OCR request failed';
 
-  for (const model of models) {
+  for (const model of GEMINI_TEXT_MODELS) {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
       {

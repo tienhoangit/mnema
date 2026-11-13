@@ -34,8 +34,10 @@ export function useTextSelection({
   const [ghostreader, setGhostreader] = useState<GhostreaderState | null>(null);
 
   useEffect(() => {
-    const handleSelection = (e: MouseEvent) => {
-      if (selectionPopoverRef.current?.contains(e.target as Node)) {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const checkSelection = (target?: EventTarget | null) => {
+      if (target && selectionPopoverRef.current?.contains(target as Node)) {
         return;
       }
       const selection = window.getSelection();
@@ -50,34 +52,73 @@ export function useTextSelection({
 
       const text = selection.toString().trim();
       if (text.length > 2) {
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
+        try {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) return;
 
-        let locStr: string | undefined = undefined;
-        if (contentRef.current) {
-          const contentRect = contentRef.current.getBoundingClientRect();
-          const scrollPos = window.scrollY || document.documentElement.scrollTop;
-          const elemTop = contentRect.top + scrollPos;
-          const currentPos = rect.top + scrollPos - elemTop;
-          const totalHeight = contentRect.height;
-          if (totalHeight > 0) {
-            const pct = Math.max(0, Math.min(100, Math.round((currentPos / totalHeight) * 100)));
-            locStr = `${pct}%`;
+          let locStr: string | undefined = undefined;
+          if (contentRef.current) {
+            const contentRect = contentRef.current.getBoundingClientRect();
+            const scrollPos = window.scrollY || document.documentElement.scrollTop;
+            const elemTop = contentRect.top + scrollPos;
+            const currentPos = rect.top + scrollPos - elemTop;
+            const totalHeight = contentRect.height;
+            if (totalHeight > 0) {
+              const pct = Math.max(0, Math.min(100, Math.round((currentPos / totalHeight) * 100)));
+              locStr = `${pct}%`;
+            }
           }
-        }
 
-        setSelectedText(text);
-        setSelectedLocation(locStr);
-        setSelectionRange({
-          x: Math.min(window.innerWidth - 190, Math.max(190, rect.left + rect.width / 2)),
-          top: rect.top,
-          bottom: rect.bottom,
-        });
+          // Dynamic toolbar clamping for narrow viewports (< 380px down to 360px)
+          const viewportWidth = window.innerWidth;
+          const popoverHalfWidth = Math.min(170, Math.max(120, (viewportWidth - 32) / 2));
+          const minX = popoverHalfWidth + 16;
+          const maxX = Math.max(minX, viewportWidth - popoverHalfWidth - 16);
+          const rawCenterX = rect.left + rect.width / 2;
+          const clampedX = Math.min(maxX, Math.max(minX, rawCenterX));
+
+          setSelectedText(text);
+          setSelectedLocation(locStr);
+          setSelectionRange({
+            x: clampedX,
+            top: rect.top,
+            bottom: rect.bottom,
+          });
+        } catch {
+          // Ignore invalid selection ranges during DOM transitions
+        }
       }
     };
 
-    document.addEventListener('mouseup', handleSelection);
-    return () => document.removeEventListener('mouseup', handleSelection);
+    const handleMouseUp = (e: MouseEvent) => {
+      checkSelection(e.target);
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        checkSelection(e.target);
+      }, 50);
+    };
+
+    const handleSelectionChange = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        checkSelection();
+      }, 150);
+    };
+
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchend', handleTouchEnd);
+    document.addEventListener('selectionchange', handleSelectionChange);
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
   }, [showNoteInput, ghostreader, contentRef]);
 
   const handleRunGhostreader = async (action: 'explain' | 'translate') => {
